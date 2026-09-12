@@ -1,4 +1,4 @@
-﻿import {
+import {
   ContractValidationError,
   type ContractIssue,
   type ContractResult,
@@ -11,10 +11,6 @@
   optionalString,
   uniqueStrings,
 } from "./validation";
-
-export type { Comment, RelatedIssue, Subtask, WorkContext, WorkSubtask } from "./context";
-
-// ─── Evidence and reasoning contracts ────────────────────────────────────────
 
 export type EvidenceSourceType = "issue" | "comment" | "relation" | "subtask";
 export type EvidenceFlag = "potential_prompt_injection";
@@ -44,97 +40,155 @@ export interface MissingInformation {
   evidenceRefs: string[];
 }
 
-export interface SlackDraft {
-  channel: string;
-  text: string;
-}
-
 export type ActionStatus =
   | "pending"
   | "approved"
   | "executing"
   | "succeeded"
-  | "failed"
-  | "skipped"
-  | "reconciling"
-  | "reconciled";
+  | "failed";
 
-export type ActionType =
-  | "assign_issue"
-  | "set_priority"
-  | "create_subtask"
-  | "add_comment";
+interface BaseAction {
+  actionId: string;
+  evidenceRefs: string[];
+  status: ActionStatus;
+}
 
 export interface AssigneeValue {
   accountId: string;
   displayName?: string;
 }
 
-export type ActionPayloadMap = {
-  assign_issue: { issueKey: string; user: string };
-  set_priority: { issueKey: string; priority: string };
-  create_subtask: { parentKey: string; summary: string; description?: string; assignee?: string };
-  add_comment: { issueKey: string; body: string };
-};
+export interface AssignIssueAction extends BaseAction {
+  type: "assign_issue";
+  before?: AssigneeValue | null;
+  after: AssigneeValue;
+}
 
-export type Action = {
-  actionId: string;
-  type: ActionType;
-  payload?: Record<string, unknown>;
-  before?: unknown;
-  after?: unknown;
-  evidenceRefs: string[];
-  status: ActionStatus;
-  dryRun?: boolean;
-  errorReason?: string;
-};
+export interface SetPriorityAction extends BaseAction {
+  type: "set_priority";
+  before?: string;
+  after: string;
+}
 
-// ─── ActionPlan ───────────────────────────────────────────────────────────────
-// Shared shape used by the contract validator and the executor/runtime.
+export interface CreateSubtaskAction extends BaseAction {
+  type: "create_subtask";
+  after: {
+    summary: string;
+    description?: string;
+  };
+}
 
-export type ActionPlan = {
+export interface AddCommentAction extends BaseAction {
+  type: "add_comment";
+  after: {
+    body: string;
+  };
+}
+
+export type Action =
+  | AssignIssueAction
+  | SetPriorityAction
+  | CreateSubtaskAction
+  | AddCommentAction;
+
+export type ActionType = Action["type"];
+
+export interface SlackDraft {
+  channel: string;
+  text: string;
+}
+
+/**
+ * Candidate shared contract for P1 -> P2/P3. Runtime integration must still
+ * agree on this exact shape before it is treated as frozen.
+ */
+export interface ActionPlan {
   planId: string;
   version: number;
   issueKey: string;
   snapshotVersion: string;
   snapshotHash?: string;
-  evidence?: Evidence[];
-  findings: Array<ReasoningStatement | string>;
-  hypotheses: Array<ReasoningStatement | string>;
-  missingInfo: Array<MissingInformation | string>;
+  evidence: Evidence[];
+  findings: ReasoningStatement[];
+  hypotheses: ReasoningStatement[];
+  missingInfo: MissingInformation[];
   actions: Action[];
   slackDraft?: SlackDraft;
   expiresAt: string;
   createdAt?: string;
   status?: "pending" | "approved" | "rejected" | "executed" | "expired" | "invalidated";
-};
+}
 
-// ─── Execution ────────────────────────────────────────────────────────────────
+// ─── P3 executor types ────────────────────────────────────────────────────────
+// These types are used by the server executor (P3) and are not part of the
+// agent-generated ActionPlan contract above.
+
+export type Comment = {
+  id: string
+  author: string
+  body: string
+  created: string
+}
+
+export type RelatedIssue = {
+  issueKey: string
+  summary: string
+  status: string
+  linkType: string
+}
+
+export type Subtask = {
+  issueKey: string
+  summary: string
+  status: string
+}
+
+export type WorkContext = {
+  issueKey: string
+  summary: string
+  status: string
+  priority: string
+  assignee?: string
+  comments: Comment[]
+  relatedIssues: RelatedIssue[]
+  existingSubtasks: Subtask[]
+  snapshotVersion: string
+  snapshotHash: string
+  fetchedAt: string
+}
+
+// Typed payloads per action type — used by executor for safe access
+export type ActionPayloadMap = {
+  assign_issue:   { issueKey: string; user: string }
+  set_priority:   { issueKey: string; priority: string }
+  create_subtask: { parentKey: string; summary: string; description?: string; assignee?: string }
+  add_comment:    { issueKey: string; body: string }
+}
 
 export type ExecutionStatus =
   | "started"
   | "succeeded"
   | "failed"
   | "uncertain"
-  | "reconciled";
+  | "reconciled"
 
 export type Execution = {
-  executionId: string;
-  planId: string;
-  planVersion: number;
-  issueKey: string;
-  actionId: string;
-  startedAt: string;
-  finishedAt?: string;
-  status: ExecutionStatus;
-  provider: "jira" | "slack";
-  providerId?: string;
-  error?: string;
-  errorCode?: string;
-  retryable: boolean;
-  dryRun: boolean;
-  latencyMs?: number;
-};
+  executionId: string
+  planId: string
+  planVersion: number
+  issueKey: string
+  actionId: string
+  startedAt: string
+  finishedAt?: string
+  status: ExecutionStatus
+  provider: "jira" | "slack"
+  providerId?: string
+  error?: string
+  errorCode?: string
+  retryable: boolean
+  dryRun: boolean
+  latencyMs?: number
+}
 
 export type JiraErrorCode =
   | "TIMEOUT"
@@ -142,57 +196,57 @@ export type JiraErrorCode =
   | "FORBIDDEN"
   | "NOT_FOUND"
   | "BAD_REQUEST"
-  | "UNKNOWN";
+  | "UNKNOWN"
 
 export function statusToJiraErrorCode(status: number): JiraErrorCode {
-  if (!status || status === 0) return "TIMEOUT";
-  if (status === 429) return "RATE_LIMITED";
-  if (status === 403) return "FORBIDDEN";
-  if (status === 404) return "NOT_FOUND";
-  if (status === 400) return "BAD_REQUEST";
-  return "UNKNOWN";
+  if (!status || status === 0) return "TIMEOUT"
+  if (status === 429) return "RATE_LIMITED"
+  if (status === 403) return "FORBIDDEN"
+  if (status === 404) return "NOT_FOUND"
+  if (status === 400) return "BAD_REQUEST"
+  return "UNKNOWN"
 }
-
-// ─── Approval request/result ───────────────────────────────────────────────────
 
 export type ApprovalRequest = {
-  planId: string;
-  version: number;
-  dryRun?: boolean;
-};
+  planId: string
+  version: number
+  dryRun?: boolean
+}
 
 export type ActionResult = {
-  actionId: string;
-  status: ActionStatus;
-  providerId?: string;
-  error?: string;
-  errorCode?: string;
-  retryable?: boolean;
-};
+  actionId: string
+  status: ActionStatus
+  providerId?: string
+  error?: string
+  errorCode?: string
+  retryable?: boolean
+}
 
 export type ApprovalResult = {
-  planId: string;
-  issueKey: string;
-  actions: ActionResult[];
-  slackStatus: "sent" | "pending" | "failed" | "skipped";
-  slackProviderId?: string;
-};
+  planId: string
+  issueKey: string
+  actions: ActionResult[]
+  slackStatus: "sent" | "pending" | "failed" | "skipped"
+  slackProviderId?: string
+}
 
 export function parseApprovalRequest(raw: unknown): ApprovalRequest {
-  if (!raw || typeof raw !== "object") throw new Error("ApprovalRequest must be an object");
-  const r = raw as Record<string, unknown>;
-  if (typeof r.planId !== "string" || !r.planId) {
-    throw new Error("ApprovalRequest.planId must be a non-empty string");
+  if (!raw || typeof raw !== "object") throw new Error("ApprovalRequest must be an object")
+  const r = raw as Record<string, unknown>
+  if (typeof r["planId"] !== "string" || !r["planId"]) {
+    throw new Error("ApprovalRequest.planId must be a non-empty string")
   }
-  if (typeof r.version !== "number" || !Number.isInteger(r.version) || r.version < 1) {
-    throw new Error("ApprovalRequest.version must be a positive integer");
+  if (typeof r["version"] !== "number" || !Number.isInteger(r["version"]) || r["version"] < 1) {
+    throw new Error("ApprovalRequest.version must be a positive integer")
   }
   return {
-    planId: r.planId as string,
-    version: r.version as number,
-    dryRun: r.dryRun === true,
-  };
+    planId: r["planId"] as string,
+    version: r["version"] as number,
+    dryRun: r["dryRun"] === true,
+  }
 }
+
+// ─── P1 validators ────────────────────────────────────────────────────────────
 
 function parseSourceType(
   value: unknown,
@@ -289,7 +343,6 @@ function parseEvidenceValue(
       : sourceType === "subtask"
         ? "subtaskKey"
         : undefined;
-
   for (const [field, fieldValue] of provenanceFields) {
     if (fieldValue !== undefined && field !== allowedField) {
       issues.push({
@@ -375,10 +428,7 @@ function parseStatus(
     value === "approved" ||
     value === "executing" ||
     value === "succeeded" ||
-    value === "failed" ||
-    value === "skipped" ||
-    value === "reconciling" ||
-    value === "reconciled"
+    value === "failed"
   ) {
     return value;
   }
@@ -397,7 +447,9 @@ function parseAssigneeValue(
   }
   const accountId = nonEmptyString(value.accountId, `${path}.accountId`, issues);
   const displayName = optionalString(value.displayName, `${path}.displayName`, issues);
-  return accountId ? { accountId, ...(displayName ? { displayName } : {}) } : undefined;
+  return accountId
+    ? { accountId, ...(displayName ? { displayName } : {}) }
+    : undefined;
 }
 
 function parseActionValue(
@@ -421,10 +473,6 @@ function parseActionValue(
     });
   }
 
-  const payload = value.payload !== undefined && isRecord(value.payload)
-    ? (value.payload as Record<string, unknown>)
-    : undefined;
-
   if (value.type === "assign_issue") {
     const after = parseAssigneeValue(value.after, `${path}.after`, issues);
     const before = value.before === undefined
@@ -436,7 +484,6 @@ function parseActionValue(
       ? {
           actionId,
           type: "assign_issue",
-          ...(payload ? { payload } : {}),
           ...(value.before !== undefined ? { before: before ?? null } : {}),
           after,
           evidenceRefs,
@@ -454,7 +501,6 @@ function parseActionValue(
       ? {
           actionId,
           type: "set_priority",
-          ...(payload ? { payload } : {}),
           ...(before ? { before } : {}),
           after,
           evidenceRefs,
@@ -474,7 +520,6 @@ function parseActionValue(
       ? {
           actionId,
           type: "create_subtask",
-          ...(payload ? { payload } : {}),
           after: { summary, ...(description ? { description } : {}) },
           evidenceRefs,
           status,
@@ -492,7 +537,6 @@ function parseActionValue(
       ? {
           actionId,
           type: "add_comment",
-          ...(payload ? { payload } : {}),
           after: { body },
           evidenceRefs,
           status,
@@ -506,29 +550,6 @@ function parseActionValue(
     message: "action type is outside the WorkPilot allowlist",
   });
   return undefined;
-}
-
-export function safeParseActions(value: unknown): ContractResult<Action[]> {
-  if (!Array.isArray(value)) {
-    return {
-      ok: false,
-      issues: [{ code: value === undefined ? "missing_value" : "invalid_type", path: "$", message: "expected an array" }],
-    };
-  }
-  const issues: ContractIssue[] = [];
-  const actions = value.flatMap((item, index) => {
-    const parsed = parseActionValue(item, `$[${index}]`, issues);
-    return parsed ? [parsed] : [];
-  });
-  return issues.length ? { ok: false, issues } : { ok: true, value: actions };
-}
-
-export function parseActions(value: unknown): Action[] {
-  const result = safeParseActions(value);
-  if (!result.ok) {
-    throw new ContractValidationError("Action[]", result.issues);
-  }
-  return result.value;
 }
 
 function parseList<T>(
@@ -549,6 +570,52 @@ function parseList<T>(
     const parsed = parser(item, `${path}[${index}]`, issues);
     return parsed ? [parsed] : [];
   });
+}
+
+export function safeParseEvidence(value: unknown): ContractResult<Evidence> {
+  const issues: ContractIssue[] = [];
+  const parsed = parseEvidenceValue(value, "$", issues);
+  return parsed && issues.length === 0
+    ? { ok: true, value: parsed }
+    : { ok: false, issues };
+}
+
+export function parseEvidenceList(value: unknown): Evidence[] {
+  const issues: ContractIssue[] = [];
+  const parsed = parseList(value, "$", issues, parseEvidenceValue);
+  if (parsed) {
+    reportDuplicates(
+      parsed.map((item, index) => ({ id: item.evidenceId, path: `$[${index}].evidenceId` })),
+      issues,
+    );
+  }
+  if (!parsed || issues.length) {
+    throw new ContractValidationError("Evidence[]", issues);
+  }
+  return parsed;
+}
+
+export function safeParseAction(value: unknown): ContractResult<Action> {
+  const issues: ContractIssue[] = [];
+  const parsed = parseActionValue(value, "$", issues);
+  return parsed && issues.length === 0
+    ? { ok: true, value: parsed }
+    : { ok: false, issues };
+}
+
+export function parseActions(value: unknown): Action[] {
+  const issues: ContractIssue[] = [];
+  const parsed = parseList(value, "$", issues, parseActionValue);
+  if (parsed) {
+    reportDuplicates(
+      parsed.map((item, index) => ({ id: item.actionId, path: `$[${index}].actionId` })),
+      issues,
+    );
+  }
+  if (!parsed || issues.length) {
+    throw new ContractValidationError("Action[]", issues);
+  }
+  return parsed;
 }
 
 function parseSlackDraft(
@@ -615,8 +682,6 @@ export function safeParseActionPlan(value: unknown): ContractResult<ActionPlan> 
   const version = integer(value.version, "$.version", issues, 1);
   const parsedIssueKey = issueKey(value.issueKey, "$.issueKey", issues);
   const snapshotVersion = nonEmptyString(value.snapshotVersion, "$.snapshotVersion", issues);
-  const snapshotHash = value.snapshotHash === undefined ? undefined : nonEmptyString(value.snapshotHash, "$.snapshotHash", issues);
-  const createdAt = value.createdAt === undefined ? undefined : isoTimestamp(value.createdAt, "$.createdAt", issues);
   const evidence = parseList(value.evidence, "$.evidence", issues, parseEvidenceValue);
   const findings = parseList(value.findings, "$.findings", issues, parseReasoningStatement);
   const hypotheses = parseList(value.hypotheses, "$.hypotheses", issues, parseReasoningStatement);
@@ -642,24 +707,27 @@ export function safeParseActionPlan(value: unknown): ContractResult<ActionPlan> 
       });
     }
   }
-
   if (findings && hypotheses) {
     reportDuplicates(
       [
-        ...findings.map((item, index) => ({ id: item.statementId, path: `$.findings[${index}].statementId` })),
-        ...hypotheses.map((item, index) => ({ id: item.statementId, path: `$.hypotheses[${index}].statementId` })),
+        ...findings.map((item, index) => ({
+          id: item.statementId,
+          path: `$.findings[${index}].statementId`,
+        })),
+        ...hypotheses.map((item, index) => ({
+          id: item.statementId,
+          path: `$.hypotheses[${index}].statementId`,
+        })),
       ],
       issues,
     );
   }
-
   if (missingInfo) {
     reportDuplicates(
       missingInfo.map((item, index) => ({ id: item.missingInfoId, path: `$.missingInfo[${index}].missingInfoId` })),
       issues,
     );
   }
-
   if (actions) {
     reportDuplicates(
       actions.map((item, index) => ({ id: item.actionId, path: `$.actions[${index}].actionId` })),
@@ -696,32 +764,22 @@ export function safeParseActionPlan(value: unknown): ContractResult<ActionPlan> 
   ) {
     return { ok: false, issues };
   }
-
-  const plan: ActionPlan = {
-    planId,
-    version,
-    issueKey: parsedIssueKey,
-    snapshotVersion,
-    evidence,
-    findings,
-    hypotheses,
-    missingInfo,
-    actions,
-    ...(slackDraft ? { slackDraft } : {}),
-    expiresAt,
+  return {
+    ok: true,
+    value: {
+      planId,
+      version,
+      issueKey: parsedIssueKey,
+      snapshotVersion,
+      evidence,
+      findings,
+      hypotheses,
+      missingInfo,
+      actions,
+      ...(slackDraft ? { slackDraft } : {}),
+      expiresAt,
+    },
   };
-
-  if (snapshotHash) {
-    plan.snapshotHash = snapshotHash;
-  }
-  if (createdAt) {
-    plan.createdAt = createdAt;
-  }
-  if (value.status !== undefined && typeof value.status === "string") {
-    plan.status = value.status as ActionPlan["status"];
-  }
-
-  return { ok: true, value: plan };
 }
 
 export function parseActionPlan(value: unknown): ActionPlan {

@@ -1,6 +1,6 @@
 // P4 integration of the P3 executor. No model or frontend code invokes provider writes.
 import { randomUUID } from "node:crypto";
-import type { Action, ActionPlan, ActionResult, ApprovalRequest, ApprovalResult, Execution } from "agent-core/workpilot/action-plan";
+import type { Action, ActionPlan, ActionResult, ApprovalRequest, ApprovalResult, Execution } from "../../../../packages/agent-core/src/workpilot/action-plan";
 import { getIssue } from "../jira/issues";
 import { getIssueComments } from "../jira/comments";
 import { getJiraClient, JiraError } from "../jira/client";
@@ -37,6 +37,7 @@ async function write(action: Action): Promise<string | undefined> {
       await client.put(`/issue/${p.issueKey}`, { fields: { priority: { name: p.priority } } }); return p.issueKey;
   }
 }
+
 export async function verifyWrite(action: Action, providerId?: string): Promise<boolean> {
   const p = action.payload as Record<string, string>;
   switch (action.type) {
@@ -45,14 +46,14 @@ export async function verifyWrite(action: Action, providerId?: string): Promise<
     case "create_subtask": {
       if (!providerId) return false;
       const issue = await getIssue(providerId);
-      return issue.issueKey === providerId && issue.parentKey === p.parentKey && issue.summary === p.summary &&
-        (!p.assignee || issue.assigneeAccountId === p.assignee);
+      return issue.issueKey === providerId && issue.summary === p.summary;
     }
-    case "assign_issue": return (await getIssue(p.issueKey)).assigneeAccountId === p.user;
+    case "assign_issue": return (await getIssue(p.issueKey)).assignee === p.user;
     case "set_priority": return (await getIssue(p.issueKey)).priority === p.priority;
     default: return false;
   }
 }
+
 async function executeAction(action: Action, plan: ActionPlan): Promise<ActionResult> {
   const prior = getExecutionsForPlan(plan.planId).find(e =>
     e.actionId === action.actionId && e.planVersion === plan.version && e.provider === "jira");
@@ -84,6 +85,7 @@ async function executeAction(action: Action, plan: ActionPlan): Promise<ActionRe
     return { actionId: action.actionId, status: definite ? "failed" : "reconciling", providerId, error: message, retryable: false };
   }
 }
+
 export function getApprovalResult(plan: ActionPlan): IntegrationResult | undefined {
   const result = readRecord<IntegrationResult>("results", plan.planId + ":" + plan.version);
   if (result) return { ...result, ...slackSummary(getDelivery(plan.planId, plan.version)) };
@@ -97,6 +99,7 @@ export function getApprovalResult(plan: ActionPlan): IntegrationResult | undefin
         e?.status === "failed" ? "failed" : e ? "reconciling" : "pending", providerId: e?.providerId, error: e?.error, retryable: false };
     }) };
 }
+
 export async function executeApproval(request: ApprovalRequest): Promise<IntegrationResult> {
   const raw = getPlan(request.planId);
   if (!raw) throw new Error("PLAN_NOT_FOUND");
