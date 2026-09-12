@@ -46,7 +46,7 @@ export interface GeneratedActionPlan {
 
 function coverageMissingInfo(context: WorkContext): MissingInformation[] {
   const values: MissingInformation[] = [];
-  if (context.coverage.comments === "unavailable") {
+  if (context.coverage?.comments === "unavailable") {
     values.push({
       missingInfoId: "coverage:comments",
       text: "Comments could not be read from Jira.",
@@ -54,7 +54,7 @@ function coverageMissingInfo(context: WorkContext): MissingInformation[] {
       evidenceRefs: [],
     });
   }
-  if (context.coverage.relatedIssues === "unavailable") {
+  if (context.coverage?.relatedIssues === "unavailable") {
     values.push({
       missingInfoId: "coverage:relatedIssues",
       text: "Related issues could not be read from Jira.",
@@ -62,7 +62,7 @@ function coverageMissingInfo(context: WorkContext): MissingInformation[] {
       evidenceRefs: [],
     });
   }
-  if (context.coverage.subtasks === "unavailable") {
+  if (context.coverage?.subtasks === "unavailable") {
     values.push({
       missingInfoId: "coverage:subtasks",
       text: "Existing subtasks could not be read from Jira.",

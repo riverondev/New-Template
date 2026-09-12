@@ -205,7 +205,7 @@ export function evidenceFromContext(context: WorkContext): Evidence[] {
         ? { flags: ["potential_prompt_injection" as const] }
         : {}),
     })),
-    ...context.assignmentCandidates.map((candidate) => ({
+    ...(context.assignmentCandidates ?? []).map((candidate) => ({
       evidenceId: assignmentEvidenceId(context.issueKey, candidate),
       sourceType: "issue" as const,
       issueKey: context.issueKey,

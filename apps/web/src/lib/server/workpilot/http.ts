@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { z } from "zod";
+import type { ActionPlan } from "agent-core/workpilot/action-plan";
 import { readRecord, writeRecord } from "./disk";
 import { getPlan, getAllPlansForIssue, updatePlanStatus } from "./persistence";
 import { readContext } from "./context";
@@ -57,7 +58,7 @@ export async function handleWorkpilot(request: Request, resource: string): Promi
       }
       if (resource === "plans") {
         const plan = getAllPlansForIssue(issueKey).filter(p => readRecord<string>("owners", p.planId) === session)
-          .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+          .sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""))[0];
         return reply(plan ? { plan, result: getApprovalResult(plan), slack: getDelivery(plan.planId, plan.version) } : { plan: null });
       }
       return reply({ error: "NOT_FOUND" }, 404);
@@ -78,7 +79,7 @@ export async function handleWorkpilot(request: Request, resource: string): Promi
         if (context.snapshotHash !== plan.snapshotHash || context.snapshotVersion !== plan.snapshotVersion)
           throw new Error("SNAPSHOT_CHANGED");
         // A new proposal must not erase an unresolved operation from this issue.
-        if (getAllPlansForIssue(plan.issueKey).some(p => p.status === "approved" ||
+        if (getAllPlansForIssue(plan.issueKey).some((p: ActionPlan) => p.status === "approved" ||
           getApprovalResult(p)?.actions.some(a => a.status === "reconciling")))
           throw new Error("RECONCILIATION_REQUIRED");
         writeRecord("owners", plan.planId, session);

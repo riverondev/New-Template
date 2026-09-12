@@ -85,15 +85,35 @@ export function rehearsalPlan(context: WorkContext): ActionPlan {
   const body = blocked ? "Ensayo: fix en staging. Falta documentar el caso de prueba y resolver WP-39." :
     "Ensayo: accesibilidad lista para QA. Dependencias cerradas; revisar handoff.";
   const alreadyCreated = context.existingSubtasks.some(s => s.summary === "Documentar caso de prueba QA");
-  return { planId: randomUUID(), version: 1, issueKey: context.issueKey, snapshotVersion: context.snapshotVersion,
-    snapshotHash: context.snapshotHash, findings: [context.comments[0].body], hypotheses: [],
-    missingInfo: blocked ? ["Caso de prueba QA", "Resolver WP-39"] : [],
+  const commentId = context.comments[0]?.id ?? "fixture-comment";
+  const evidenceId = `comment:${context.issueKey}:${commentId}`;
+  const issueEvidenceId = `issue:${context.issueKey}`;
+  return {
+    planId: randomUUID(), version: 1, issueKey: context.issueKey, snapshotVersion: context.snapshotVersion,
+    snapshotHash: context.snapshotHash,
+    evidence: [
+      { evidenceId: issueEvidenceId, sourceType: "issue", issueKey: context.issueKey,
+        excerpt: context.summary ?? context.issueKey },
+      { evidenceId, sourceType: "comment", issueKey: context.issueKey,
+        commentId, excerpt: context.comments[0]?.body?.slice(0, 280) ?? body },
+    ],
+    findings: [{ statementId: "f1", text: context.comments[0]?.body ?? body, evidenceRefs: [evidenceId] }],
+    hypotheses: [],
+    missingInfo: blocked
+      ? [
+          { missingInfoId: "m1", text: "Caso de prueba QA", blocking: true, evidenceRefs: [evidenceId] },
+          { missingInfoId: "m2", text: "Resolver WP-39", blocking: false, evidenceRefs: [issueEvidenceId] },
+        ]
+      : [],
     actions: [
-      { actionId: "handoff", type: "add_comment", payload: { issueKey: context.issueKey, body },
-        before: null, after: body, evidenceRefs: [context.comments[0].body], status: "pending" },
+      { actionId: "handoff", type: "add_comment",
+        payload: { issueKey: context.issueKey, body },
+        after: { body }, evidenceRefs: [evidenceId], status: "pending" },
       ...(blocked && !alreadyCreated ? [{ actionId: "qa", type: "create_subtask" as const,
         payload: { parentKey: context.issueKey, summary: "Documentar caso de prueba QA" },
-        before: null, after: "Documentar caso de prueba QA", evidenceRefs: [context.comments[0].body], status: "pending" as const }] : []),
-    ], slackDraft: { channel: "", text: context.issueKey + " — " + body },
-    createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 15 * 60_000).toISOString(), status: "pending" };
+        after: { summary: "Documentar caso de prueba QA" }, evidenceRefs: [evidenceId], status: "pending" as const }] : []),
+    ],
+    slackDraft: { channel: "", text: context.issueKey + " — " + body },
+    createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 15 * 60_000).toISOString(), status: "pending",
+  };
 }

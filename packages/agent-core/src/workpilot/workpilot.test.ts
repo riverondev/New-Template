@@ -122,8 +122,8 @@ test("the tool registry is read-only and partial reads expose unavailable covera
   assert.equal(result.ok, true);
   if (!result.ok) return;
   assert.deepEqual(result.context.comments, []);
-  assert.equal(result.context.coverage.comments, "unavailable");
-  assert.equal(result.context.coverage.relatedIssues, "complete");
+  assert.equal(result.context.coverage?.comments, "unavailable");
+  assert.equal(result.context.coverage?.relatedIssues, "complete");
   assert.equal(result.context.fetchedAt, "2026-09-12T14:00:00.000Z");
   assert.deepEqual(
     result.gaps.map(({ source, code, retryable }) => ({ source, code, retryable })),
@@ -501,7 +501,7 @@ test("P1-07 validates before-values and derives assignee authority only from con
   const ambiguousContext: WorkContext = {
     ...context,
     assignmentCandidates: [
-      ...context.assignmentCandidates,
+      ...(context.assignmentCandidates ?? []),
       {
         user: { accountId: "qa-caro", displayName: "Caro QA" },
         source: { kind: "jira_user_field", fieldId: "customfield_backup_owner" },

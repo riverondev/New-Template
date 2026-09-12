@@ -45,12 +45,21 @@ export type ActionStatus =
   | "approved"
   | "executing"
   | "succeeded"
-  | "failed";
+  | "failed"
+  | "skipped"
+  | "reconciling"
+  | "reconciled";
 
 interface BaseAction {
   actionId: string;
+  type: ActionType;
+  payload?: Record<string, unknown>;
+  before?: unknown;
+  after?: unknown;
   evidenceRefs: string[];
   status: ActionStatus;
+  dryRun?: boolean;
+  errorReason?: string;
 }
 
 export interface AssigneeValue {
@@ -428,7 +437,10 @@ function parseStatus(
     value === "approved" ||
     value === "executing" ||
     value === "succeeded" ||
-    value === "failed"
+    value === "failed" ||
+    value === "skipped" ||
+    value === "reconciling" ||
+    value === "reconciled"
   ) {
     return value;
   }

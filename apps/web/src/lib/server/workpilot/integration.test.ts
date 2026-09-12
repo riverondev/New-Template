@@ -88,7 +88,11 @@ test("rejects malformed actions, overwritten IDs and destinations before any wri
   const p = await propose("WP-57");
   assert.equal((await call("plans", p)).body.error, "PLAN_ALREADY_EXISTS");
   const bad = structuredClone(p); bad.planId = "bad-destination";
-  bad.actions[0].payload.issueKey = "OTHER-1";
+  const firstAction = bad.actions[0];
+  if (!firstAction.payload) {
+    throw new Error("Action payload missing in integration test fixture");
+  }
+  firstAction.payload.issueKey = "OTHER-1";
   assert.equal((await call("plans", bad)).body.error, "DESTINATION_NOT_ALLOWED");
   const malformed = { ...p, planId: "bad-payload", actions: [{ ...p.actions[0], payload: {} }] };
   assert.equal((await call("plans", malformed)).status, 400);

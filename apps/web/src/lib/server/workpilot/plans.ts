@@ -60,7 +60,7 @@ export type PlanValidationResult =
 export function validatePlan(
   planId: string,
   version: number,
-  currentSnapshotHash: string
+  currentSnapshotHash?: string | null,
 ): PlanValidationResult {
   const plan = getPlan(planId)
 
@@ -85,7 +85,7 @@ export function validatePlan(
     return { ok: false, reason: "PLAN_WRONG_VERSION" }
   }
 
-  if (plan.snapshotHash !== currentSnapshotHash) {
+  if (plan.snapshotHash !== (currentSnapshotHash ?? null)) {
     log.warn("snapshot changed", {
       planId,
       stored: plan.snapshotHash,

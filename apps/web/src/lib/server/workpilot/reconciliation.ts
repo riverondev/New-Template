@@ -2,7 +2,7 @@
 // Handles uncertain execution outcomes (e.g. Jira timeout).
 // Reads back from Jira to determine if the action was applied — never re-executes.
 
-import type { Action, Execution } from "../../../../packages/agent-core/src/workpilot/action-plan"
+import type { Action, Execution } from "agent-core/workpilot/action-plan"
 import { getExecution, updateExecution } from "./persistence"
 import { getIssue, getSubtasks } from "../jira/issues"
 import { getIssueComments } from "../jira/comments"

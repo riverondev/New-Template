@@ -13,7 +13,7 @@ export function getDelivery(planId: string, version: number) {
   return stored;
 }
 export async function deliverSlack(plan: ActionPlan, retry = false): Promise<Delivery | undefined> {
-  if (!plan.slackDraft.text.trim()) return undefined;
+  if (!plan.slackDraft?.text.trim()) return undefined;
   const id = plan.planId + ":" + plan.version;
   if (!claimRecord("slack-locks", id)) throw new Error("CONCURRENT_EXECUTION");
   try {
@@ -36,7 +36,7 @@ export async function deliverSlack(plan: ActionPlan, retry = false): Promise<Del
       const client = process.env.WORKPILOT_DEMO === "true" ? rehearsalSlack : createSlackClientFromEnv();
       result = await createSlackNotificationService({ client, recipientUserId }).send({
         executionId: id, planId: plan.planId, planVersion: plan.version,
-        issueKey: plan.issueKey, jiraStatus: "verified", draft: { text: plan.slackDraft.text },
+        issueKey: plan.issueKey, jiraStatus: "verified", draft: { text: plan.slackDraft!.text },
       });
     } catch {
       result = { status: "blocked", error: { code: "slack_not_configured", message: "Slack is not configured.", retryable: false } };
