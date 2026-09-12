@@ -1,3 +1,10 @@
+import { useEffect, useRef, useState } from "react";
+
+import { ActionPlan } from "./action-plan";
+import { ApprovalCard } from "./approval-card";
+import { EvidenceCard } from "./evidence-card";
+import { ExecutionStatus, type ExecutionState } from "./execution-status";
+
 type WorkpilotPlan = {
   findings: string[];
   missingInfo: string[];
@@ -16,6 +23,43 @@ export function WorkpilotPanel({
   status,
   plan,
 }: WorkpilotPanelProps) {
+  const [executionState, setExecutionState] = useState<ExecutionState>("idle");
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    setExecutionState("idle");
+
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, [issueKey]);
+
+  const handleApprove = () => {
+    setExecutionState("executing");
+
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+
+    timeoutRef.current = setTimeout(() => {
+      setExecutionState("success");
+    }, 900);
+  };
+
+  const handleReject = () => {
+    setExecutionState("idle");
+
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+  };
+
   return (
     <aside
       style={{
@@ -36,7 +80,7 @@ export function WorkpilotPanel({
         WORKPILOT
       </div>
 
-      <h2 style={{ marginTop: 0 }}>Review {issueKey}</h2>
+      <h2 style={{ marginTop: 0 }}>Revisión de {issueKey}</h2>
 
       <p
         style={{
@@ -44,7 +88,7 @@ export function WorkpilotPanel({
           lineHeight: 1.6,
         }}
       >
-        Proposed handoff based on the current Jira context.
+        Handoff propuesto según el contexto actual del ticket en Jira.
       </p>
 
       <div
@@ -57,118 +101,111 @@ export function WorkpilotPanel({
           fontSize: "13px",
         }}
       >
-        Context: {issueKey} · {status}
+        Contexto: {issueKey} · {status}
       </div>
 
       <div style={{ marginTop: "24px" }}>
-        <h3 style={{ fontSize: "15px" }}>Findings</h3>
+        <h3 style={{ fontSize: "15px" }}>Hallazgos</h3>
 
-        {plan.findings.map((finding) => (
+        {plan.findings.length > 0 ? (
+          plan.findings.map((finding) => (
+            <div
+              key={finding}
+              style={{
+                marginBottom: "8px",
+                padding: "10px",
+                background: "#1f2937",
+                borderRadius: "8px",
+                fontSize: "14px",
+              }}
+            >
+              ✓ {finding}
+            </div>
+          ))
+        ) : (
           <div
-            key={finding}
             style={{
-              marginBottom: "8px",
               padding: "10px",
-              background: "#1f2937",
               borderRadius: "8px",
-              fontSize: "14px",
-            }}
-          >
-            ✓ {finding}
-          </div>
-        ))}
-      </div>
-
-      <div style={{ marginTop: "24px" }}>
-        <h3 style={{ fontSize: "15px" }}>Missing information</h3>
-
-        {plan.missingInfo.map((item) => (
-          <div
-            key={item}
-            style={{
-              marginBottom: "8px",
-              padding: "10px",
               border: "1px solid #4b5563",
-              borderRadius: "8px",
-              fontSize: "14px",
-            }}
-          >
-            ⚠ {item}
-          </div>
-        ))}
-      </div>
-
-      <div style={{ marginTop: "24px" }}>
-        <h3 style={{ fontSize: "15px" }}>Evidence</h3>
-
-        {plan.evidence.map((item) => (
-          <div
-            key={item}
-            style={{
-              marginBottom: "8px",
               color: "#d1d5db",
-              fontSize: "13px",
-              lineHeight: 1.5,
             }}
           >
-            • {item}
+            No se identificaron hallazgos.
           </div>
-        ))}
+        )}
       </div>
 
       <div style={{ marginTop: "24px" }}>
-        <h3 style={{ fontSize: "15px" }}>Proposed actions</h3>
+        <h3 style={{ fontSize: "15px" }}>Información faltante</h3>
 
-        {plan.actions.map((action) => (
+        {plan.missingInfo.length > 0 ? (
+          plan.missingInfo.map((item) => (
+            <div
+              key={item}
+              style={{
+                marginBottom: "8px",
+                padding: "10px",
+                border: "1px solid #4b5563",
+                borderRadius: "8px",
+                fontSize: "14px",
+              }}
+            >
+              ⚠ {item}
+            </div>
+          ))
+        ) : (
           <div
-            key={action}
             style={{
-              marginBottom: "8px",
               padding: "10px",
-              background: "#1f2937",
               borderRadius: "8px",
-              fontSize: "14px",
+              border: "1px solid #4b5563",
+              color: "#d1d5db",
             }}
           >
-            {action}
+            No falta información.
           </div>
-        ))}
+        )}
       </div>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr",
-          gap: "10px",
-          marginTop: "24px",
-        }}
-      >
-        <button
-          style={{
-            padding: "12px",
-            borderRadius: "8px",
-            border: "1px solid #4b5563",
-            background: "transparent",
-            color: "#fff",
-            cursor: "pointer",
-            fontWeight: 700,
-          }}
-        >
-          Reject
-        </button>
+      <div style={{ marginTop: "24px" }}>
+        <h3 style={{ fontSize: "15px" }}>Evidencia</h3>
 
-        <button
+        <div
           style={{
-            padding: "12px",
-            borderRadius: "8px",
-            border: 0,
-            cursor: "pointer",
-            fontWeight: 700,
+            display: "flex",
+            flexDirection: "column",
+            gap: "8px",
           }}
         >
-          Approve
-        </button>
+          {plan.evidence.length > 0 ? (
+            plan.evidence.map((item) => (
+              <EvidenceCard key={item} text={item} />
+            ))
+          ) : (
+            <div
+              style={{
+                padding: "10px",
+                borderRadius: "8px",
+                border: "1px solid #4b5563",
+                color: "#d1d5db",
+              }}
+            >
+              No hay evidencia disponible.
+            </div>
+          )}
+        </div>
       </div>
+
+      <ActionPlan actions={plan.actions} />
+
+      <ApprovalCard
+        key={issueKey}
+        onApprove={handleApprove}
+        onReject={handleReject}
+      />
+
+      <ExecutionStatus state={executionState} />
     </aside>
   );
 }

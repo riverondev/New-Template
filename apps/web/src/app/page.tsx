@@ -35,14 +35,14 @@ export default function HomePage() {
         >
           <h1 style={{ margin: 0 }}>WorkPilot</h1>
           <p style={{ marginTop: "6px", color: "#666" }}>
-            Contextual workspace for Jira handoffs
+            Espacio de trabajo contextual para handoffs de Jira
           </p>
         </header>
 
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "260px 1fr 380px",
+            gridTemplateColumns: "minmax(220px, 260px) minmax(0, 1fr) minmax(280px, 380px)",
             gap: "16px",
             alignItems: "start",
           }}
@@ -56,7 +56,7 @@ export default function HomePage() {
               padding: "16px",
             }}
           >
-            <h2 style={{ fontSize: "16px", marginTop: 0 }}>Jira Tickets</h2>
+            <h2 style={{ fontSize: "16px", marginTop: 0 }}>Tickets de Jira</h2>
 
             <div
               style={{
@@ -164,21 +164,21 @@ export default function HomePage() {
             >
               <div>
                 <div style={{ fontSize: "12px", color: "#6b7280" }}>
-                  Priority
+                  Prioridad
                 </div>
                 <strong>{selectedTicket.priority}</strong>
               </div>
 
               <div>
                 <div style={{ fontSize: "12px", color: "#6b7280" }}>
-                  Assignee
+                  Responsable
                 </div>
                 <strong>{selectedTicket.assignee}</strong>
               </div>
             </div>
 
             <div style={{ marginTop: "24px" }}>
-              <h3>Description</h3>
+              <h3>Descripción</h3>
               <p
                 style={{
                   lineHeight: 1.6,
@@ -190,7 +190,7 @@ export default function HomePage() {
             </div>
 
             <div style={{ marginTop: "28px" }}>
-              <h3>Comments</h3>
+              <h3>Comentarios</h3>
 
               <div
                 style={{
@@ -232,7 +232,7 @@ export default function HomePage() {
             </div>
 
             <div style={{ marginTop: "28px" }}>
-              <h3>Dependencies</h3>
+              <h3>Dependencias</h3>
 
               {selectedTicket.dependencies.length > 0 ? (
                 <div
@@ -257,7 +257,7 @@ export default function HomePage() {
                   ))}
                 </div>
               ) : (
-                <p style={{ color: "#6b7280" }}>No open dependencies.</p>
+                <p style={{ color: "#6b7280" }}>No hay dependencias abiertas.</p>
               )}
             </div>
           </section>
