@@ -1,16 +1,16 @@
-// ─── In-memory persistence store ─────────────────────────────────────────────
-// MVP: Map-based store. Replace backing maps with DB calls without changing callers.
-// All writes are synchronous — no race conditions within a single Node.js process.
+// Durable per-record store. Atomic file replacement preserves records on restart.
+// Read/modify/write workflows use the executor's persistent locks.
 
-import type { ActionPlan, Execution } from "../../../../packages/agent-core/src/workpilot/action-plan"
+import type { ActionPlan, Execution } from "agent-core/workpilot/action-plan"
 import { createLogger } from "../logger"
+import { DiskMap } from "./disk"
 
 const log = createLogger("workpilot/persistence")
 
 // ─── Store ────────────────────────────────────────────────────────────────────
 
-const plans = new Map<string, ActionPlan>()
-const executions = new Map<string, Execution>()
+const plans = new DiskMap<ActionPlan>("plans")
+const executions = new DiskMap<Execution>("executions")
 
 // ─── ActionPlan CRUD ──────────────────────────────────────────────────────────
 

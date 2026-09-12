@@ -11,8 +11,6 @@ import { createLogger } from "../logger"
 
 const log = createLogger("workpilot/reconciliation")
 
-// ─── Reconcile a single execution ────────────────────────────────────────────
-
 export async function reconcileExecution(
   executionId: string,
   action: Action
@@ -32,61 +30,43 @@ export async function reconcileExecution(
   let providerId: string | undefined
 
   try {
+    const p = action.payload as Record<string, string>
     switch (action.type) {
       case "add_comment": {
-        const comments = await getIssueComments(execution.issueKey, client)
+        const comments = await getIssueComments(p.issueKey, client)
         const match = comments.find(
           (c) =>
-            c.body.includes(action.after.body.slice(0, 60)) &&
+            c.body.includes(p.body.slice(0, 60)) &&
             new Date(c.created) >= new Date(execution.startedAt)
         )
-        if (match) {
-          resolved = true
-          providerId = match.id
-        }
+        if (match) { resolved = true; providerId = match.id }
         break
       }
-
       case "create_subtask": {
-        const subtasks = await getSubtasks(execution.issueKey, client)
-        const match = subtasks.find((s) => s.summary === action.after.summary)
-        if (match) {
-          resolved = true
-          providerId = match.issueKey
-        }
+        const subtasks = await getSubtasks(p.parentKey, client)
+        const match = subtasks.find((s) => s.summary === p.summary)
+        if (match) { resolved = true; providerId = match.issueKey }
         break
       }
-
       case "assign_issue": {
-        const issue = await getIssue(execution.issueKey, client)
-        resolved = issue.assignee === action.after.accountId
+        const issue = await getIssue(p.issueKey, client)
+        resolved = issue.assignee === p.user
         break
       }
-
       case "set_priority": {
-        const issue = await getIssue(execution.issueKey, client)
-        resolved = issue.priority.toLowerCase() === action.after.toLowerCase()
+        const issue = await getIssue(p.issueKey, client)
+        resolved = issue.priority.toLowerCase() === p.priority.toLowerCase()
         break
       }
     }
   } catch (err) {
-    log.error("reconciliation read failed", {
-      executionId,
-      error: (err as Error).message,
-    })
-    // Leave as uncertain — caller can retry later
+    log.error("reconciliation read failed", { executionId, error: (err as Error).message })
     return execution
   }
 
   const newStatus = resolved ? "reconciled" : "failed"
-  const patch: Partial<Execution> = {
-    status: newStatus,
-    finishedAt: new Date().toISOString(),
-    providerId,
-  }
-
+  const patch: Partial<Execution> = { status: newStatus, finishedAt: new Date().toISOString(), providerId }
   updateExecution(executionId, patch)
   log.info("reconciliation complete", { executionId, resolved, newStatus })
-
   return { ...execution, ...patch }
 }

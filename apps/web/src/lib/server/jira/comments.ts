@@ -1,6 +1,6 @@
 // ─── Jira comments reads ──────────────────────────────────────────────────────
 
-import type { Comment } from "../../../../packages/agent-core/src/workpilot/action-plan"
+import type { Comment } from "agent-core/workpilot/action-plan"
 import { getJiraClient, type IJiraClient } from "./client"
 import { createLogger } from "../logger"
 

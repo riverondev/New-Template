@@ -1,0 +1,23 @@
+.wp-workspace { min-height:100vh; padding:32px; background:#f4f6fa; color:#172033; font-family:Arial,sans-serif }
+.wp-workspace header { max-width:1500px; margin:0 auto 24px }
+.wp-workspace h1 { font-size:32px; margin:8px 0 }
+.wp-eyebrow { font-size:12px; font-weight:700; letter-spacing:.14em }
+.wp-mode { display:inline-block; background:#fff3d1; border:1px solid #e1c87c; padding:10px; border-radius:8px }
+.wp-layout { max-width:1500px; margin:auto; display:grid; grid-template-columns:220px minmax(300px,1fr) minmax(340px,440px); gap:20px; align-items:start }
+.wp-card,.wp-panel { border-radius:14px; padding:22px; background:white; border:1px solid #dce1eb; min-width:0 }
+.wp-panel { background:#111827; color:#f3f4f6; border-color:#243044 }
+.wp-workspace h2 { margin-top:0; font-size:21px }
+.wp-workspace h3 { font-size:15px; margin-top:24px }
+.wp-workspace p,.wp-workspace blockquote { line-height:1.6; overflow-wrap:anywhere }
+.wp-workspace article { border-bottom:1px solid #e5e7eb; padding:12px 0 }
+.wp-workspace button { padding:11px 14px; border:1px solid #bdc7d9; border-radius:8px; cursor:pointer; background:#eef2ff; color:#182745; font-weight:700 }
+.wp-workspace button:disabled { opacity:.5; cursor:wait }
+.wp-workspace button:focus-visible,.wp-workspace input:focus-visible { outline:3px solid #6385ee; outline-offset:3px }
+.wp-workspace nav button,.wp-workspace nav input { width:100%; margin:7px 0 }
+.wp-workspace input { padding:10px; border:1px solid #bdc7d9; border-radius:7px; box-sizing:border-box }
+.wp-workspace pre { white-space:pre-wrap; overflow-wrap:anywhere; font-size:12px }
+.wp-workspace blockquote { margin:0; border-left:3px solid #92adf9; padding:12px; background:#1f2937 }
+.wp-buttons { display:flex; gap:10px; margin-top:20px }
+.wp-error { background:#fff0ee; color:#842b23; border:1px solid #dcaaa4; padding:12px; border-radius:8px }
+@media(max-width:1050px) { .wp-layout { grid-template-columns:180px 1fr } .wp-panel { grid-column:1/-1 } }
+@media(max-width:650px) { .wp-workspace { padding:16px } .wp-layout { grid-template-columns:1fr } }

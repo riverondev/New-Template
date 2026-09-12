@@ -1,6 +1,6 @@
 // ─── Jira issue relations reads ───────────────────────────────────────────────
 
-import type { RelatedIssue } from "../../../../packages/agent-core/src/workpilot/action-plan"
+import type { RelatedIssue } from "agent-core/workpilot/action-plan"
 import { getJiraClient, type IJiraClient } from "./client"
 import { createLogger } from "../logger"
 
