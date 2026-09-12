@@ -1,8 +1,9 @@
 // ─── ActionPlan management and snapshot validation ────────────────────────────
 
-import type { ActionPlan, WorkContext } from "../../../../packages/agent-core/src/workpilot/action-plan"
+import type { ActionPlan, WorkContext } from "agent-core/workpilot/action-plan"
 import { savePlan, getPlan, updatePlanStatus, getAllPlansForIssue } from "./persistence"
 import { createLogger } from "../logger"
+import { createHash } from "node:crypto"
 
 const log = createLogger("workpilot/plans")
 
@@ -12,19 +13,21 @@ const log = createLogger("workpilot/plans")
 
 export function computeSnapshotHash(ctx: WorkContext): string {
   const relevant = {
+    issueKey: ctx.issueKey,
+    snapshotVersion: ctx.snapshotVersion,
+    summary: ctx.summary,
+    comments: [...ctx.comments].sort((a, b) => a.id.localeCompare(b.id)),
     status: ctx.status,
     priority: ctx.priority,
     assignee: ctx.assignee ?? null,
     subtaskKeys: ctx.existingSubtasks.map((s) => s.issueKey).sort(),
     relatedKeys: ctx.relatedIssues.map((r) => r.issueKey).sort(),
+    subtasks: [...ctx.existingSubtasks].sort((a, b) => a.issueKey.localeCompare(b.issueKey)),
+    relations: [...ctx.relatedIssues].sort((a, b) => a.issueKey.localeCompare(b.issueKey)),
   }
-  // Simple deterministic hash — no crypto dependency needed for MVP
+  // Strong deterministic hash, including comments and dependency state.
   const str = JSON.stringify(relevant)
-  let hash = 0
-  for (let i = 0; i < str.length; i++) {
-    hash = (Math.imul(31, hash) + str.charCodeAt(i)) | 0
-  }
-  return (hash >>> 0).toString(16).padStart(8, "0")
+  return createHash("sha256").update(str).digest("hex")
 }
 
 // ─── Plan lifecycle ───────────────────────────────────────────────────────────

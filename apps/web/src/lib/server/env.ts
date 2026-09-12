@@ -22,6 +22,10 @@ export type AppEnv = {
 let _cached: AppEnv | null = null
 
 export function loadEnv(): AppEnv {
+  if (process.env.WORKPILOT_DEMO === "true") return {
+    jira: { baseUrl: "https://rehearsal.invalid", email: "", apiToken: "", projectKey: "WP" },
+    planTtlMinutes: 30, writesEnabled: true,
+  }
   if (_cached) return _cached
 
   const required = [

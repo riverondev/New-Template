@@ -1,3 +1,5 @@
+import assert from "node:assert/strict";
+import { describe, test } from "node:test";
 // ─── Unit tests: Jira read modules ───────────────────────────────────────────
 
 import { getIssue, getSubtasks } from "../issues"
@@ -10,7 +12,7 @@ import { MockJiraClient } from "./mock-client"
 describe("getIssue", () => {
   test("maps raw Jira response to IssueFields", async () => {
     const mock = new MockJiraClient().onGet(
-      "/issue/WP-42?fields=summary,status,priority,assignee,updated,subtasks",
+      "/issue/WP-42?fields=summary,status,priority,assignee,updated,subtasks,parent,description",
       {
         key: "WP-42",
         fields: {
@@ -25,16 +27,16 @@ describe("getIssue", () => {
     )
 
     const result = await getIssue("WP-42", mock)
-    expect(result.issueKey).toBe("WP-42")
-    expect(result.summary).toBe("Checkout validation blocked")
-    expect(result.status).toBe("In Progress")
-    expect(result.priority).toBe("High")
-    expect(result.assignee).toBe("Carlos")
+    assert.equal(result.issueKey, "WP-42")
+    assert.equal(result.summary, "Checkout validation blocked")
+    assert.equal(result.status, "In Progress")
+    assert.equal(result.priority, "High")
+    assert.equal(result.assignee, "Carlos")
   })
 
   test("handles missing assignee", async () => {
     const mock = new MockJiraClient().onGet(
-      "/issue/WP-42?fields=summary,status,priority,assignee,updated,subtasks",
+      "/issue/WP-42?fields=summary,status,priority,assignee,updated,subtasks,parent,description",
       {
         key: "WP-42",
         fields: {
@@ -49,7 +51,7 @@ describe("getIssue", () => {
     )
 
     const result = await getIssue("WP-42", mock)
-    expect(result.assignee).toBeUndefined()
+    assert.equal(result.assignee, undefined)
   })
 })
 
@@ -70,9 +72,9 @@ describe("getSubtasks", () => {
     )
 
     const result = await getSubtasks("WP-42", mock)
-    expect(result).toHaveLength(1)
-    expect(result[0].issueKey).toBe("WP-43")
-    expect(result[0].status).toBe("Done")
+    assert.equal(result.length, 1)
+    assert.equal(result[0].issueKey, "WP-43")
+    assert.equal(result[0].status, "Done")
   })
 
   test("returns empty array when no subtasks", async () => {
@@ -81,7 +83,7 @@ describe("getSubtasks", () => {
       { key: "WP-42", fields: { subtasks: [] } }
     )
     const result = await getSubtasks("WP-42", mock)
-    expect(result).toHaveLength(0)
+    assert.equal(result.length, 0)
   })
 })
 
@@ -114,9 +116,9 @@ describe("getIssueComments", () => {
     )
 
     const result = await getIssueComments("WP-42", mock)
-    expect(result).toHaveLength(1)
-    expect(result[0].body).toBe("Fix is in staging")
-    expect(result[0].author).toBe("Ana")
+    assert.equal(result.length, 1)
+    assert.equal(result[0].body, "Fix is in staging")
+    assert.equal(result[0].author, "Ana")
   })
 
   test("handles plain string body", async () => {
@@ -136,7 +138,7 @@ describe("getIssueComments", () => {
     )
 
     const result = await getIssueComments("WP-42", mock)
-    expect(result[0].body).toBe("Simple text comment")
+    assert.equal(result[0].body, "Simple text comment")
   })
 })
 
@@ -162,8 +164,8 @@ describe("getRelatedIssues", () => {
     )
 
     const result = await getRelatedIssues("WP-42", mock)
-    expect(result).toHaveLength(1)
-    expect(result[0].issueKey).toBe("WP-39")
-    expect(result[0].linkType).toBe("blocks")
+    assert.equal(result.length, 1)
+    assert.equal(result[0].issueKey, "WP-39")
+    assert.equal(result[0].linkType, "blocks")
   })
 })

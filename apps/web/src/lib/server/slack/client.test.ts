@@ -38,6 +38,8 @@ test("posts approved text with a server-side token and returns the real Slack ID
     text: "Jira verified for WP-42.",
     unfurl_links: false,
     unfurl_media: false,
+    mrkdwn: false,
+    parse: "none",
   });
   assert.deepEqual(result, {
     provider: "slack",

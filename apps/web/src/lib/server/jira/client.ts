@@ -4,6 +4,7 @@
 // per-request timeout, structured logging.
 
 import { loadEnv } from "../env"
+import { rehearsalJira } from "../workpilot/rehearsal"
 import { createLogger, recordMetric } from "../logger"
 
 const log = createLogger("jira/client")
@@ -86,7 +87,8 @@ async function jiraFetch<T>(
   const url = `${baseUrl}/rest/api/3${path}`
   let lastError: JiraError | null = null
 
-  for (let attempt = 1; attempt <= retry.maxAttempts; attempt++) {
+  const attempts = method === "GET" ? retry.maxAttempts : 1
+  for (let attempt = 1; attempt <= attempts; attempt++) {
     const attemptStart = Date.now()
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), retry.timeoutMs)
@@ -125,7 +127,7 @@ async function jiraFetch<T>(
         log.warn("jira rate limit", { path, attempt, retryAfterMs: delay })
         lastError = new JiraError(`Rate limited`, 429, path, true, statusToCode(429))
         recordMetric("jira/client", "failure", latency)
-        if (attempt < retry.maxAttempts) {
+        if (attempt < attempts) {
           await sleep(delay)
           continue
         }
@@ -133,10 +135,9 @@ async function jiraFetch<T>(
       }
 
       const retryable = isRetryable(res.status)
-      const text = await res.text().catch(() => "")
       const latency = Date.now() - attemptStart
       lastError = new JiraError(
-        `Jira ${method} ${path} → ${res.status}: ${text}`,
+        `Jira request failed: HTTP ${res.status}`,
         res.status,
         path,
         retryable,
@@ -154,7 +155,7 @@ async function jiraFetch<T>(
 
       recordMetric("jira/client", "failure", latency)
 
-      if (!retryable || attempt === retry.maxAttempts) throw lastError
+      if (!retryable || attempt === attempts) throw lastError
 
       // Exponential backoff: 300ms, 600ms, 1200ms, ...
       await sleep(retry.baseDelayMs * 2 ** (attempt - 1))
@@ -165,7 +166,7 @@ async function jiraFetch<T>(
         lastError = new JiraError(`Timeout after ${retry.timeoutMs}ms`, 0, path, true, statusToCode(0))
         log.error("jira timeout", { method, path, attempt, timeoutMs: retry.timeoutMs })
         recordMetric("jira/client", "failure", latency)
-        if (attempt < retry.maxAttempts) {
+        if (attempt < attempts) {
           await sleep(retry.baseDelayMs * 2 ** (attempt - 1))
           continue
         }
@@ -215,6 +216,7 @@ export class JiraClient implements IJiraClient {
 let _client: IJiraClient | null = null
 
 export function getJiraClient(): IJiraClient {
+  if (process.env.WORKPILOT_DEMO === "true") return rehearsalJira
   if (!_client) _client = new JiraClient()
   return _client
 }

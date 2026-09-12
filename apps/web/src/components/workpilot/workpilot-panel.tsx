@@ -1,211 +1,44 @@
-import { useEffect, useRef, useState } from "react";
-
+"use client";
+import type { ActionPlan as Plan, ApprovalResult } from "agent-core/workpilot/action-plan";
+import type { Delivery } from "../../lib/server/slack/delivery";
 import { ActionPlan } from "./action-plan";
-import { ApprovalCard } from "./approval-card";
 import { EvidenceCard } from "./evidence-card";
-import { ExecutionStatus, type ExecutionState } from "./execution-status";
-
-type WorkpilotPlan = {
-  findings: string[];
-  missingInfo: string[];
-  evidence: string[];
-  actions: string[];
-};
-
-type WorkpilotPanelProps = {
-  issueKey: string;
-  status: string;
-  plan: WorkpilotPlan;
-};
-
-export function WorkpilotPanel({
-  issueKey,
-  status,
-  plan,
-}: WorkpilotPanelProps) {
-  const [executionState, setExecutionState] = useState<ExecutionState>("idle");
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    setExecutionState("idle");
-
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-    }
-
-    return () => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
-    };
-  }, [issueKey]);
-
-  const handleApprove = () => {
-    setExecutionState("executing");
-
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-    }
-
-    timeoutRef.current = setTimeout(() => {
-      setExecutionState("success");
-    }, 900);
-  };
-
-  const handleReject = () => {
-    setExecutionState("idle");
-
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-    }
-  };
-
-  return (
-    <aside
-      style={{
-        background: "#111827",
-        color: "#fff",
-        borderRadius: "12px",
-        padding: "20px",
-        minHeight: "600px",
-      }}
-    >
-      <div
-        style={{
-          fontSize: "12px",
-          color: "#9ca3af",
-          marginBottom: "6px",
-        }}
-      >
-        WORKPILOT
-      </div>
-
-      <h2 style={{ marginTop: 0 }}>Revisión de {issueKey}</h2>
-
-      <p
-        style={{
-          color: "#d1d5db",
-          lineHeight: 1.6,
-        }}
-      >
-        Handoff propuesto según el contexto actual del ticket en Jira.
-      </p>
-
-      <div
-        style={{
-          marginTop: "16px",
-          padding: "10px",
-          border: "1px solid #374151",
-          borderRadius: "8px",
-          color: "#d1d5db",
-          fontSize: "13px",
-        }}
-      >
-        Contexto: {issueKey} · {status}
-      </div>
-
-      <div style={{ marginTop: "24px" }}>
-        <h3 style={{ fontSize: "15px" }}>Hallazgos</h3>
-
-        {plan.findings.length > 0 ? (
-          plan.findings.map((finding) => (
-            <div
-              key={finding}
-              style={{
-                marginBottom: "8px",
-                padding: "10px",
-                background: "#1f2937",
-                borderRadius: "8px",
-                fontSize: "14px",
-              }}
-            >
-              ✓ {finding}
-            </div>
-          ))
-        ) : (
-          <div
-            style={{
-              padding: "10px",
-              borderRadius: "8px",
-              border: "1px solid #4b5563",
-              color: "#d1d5db",
-            }}
-          >
-            No se identificaron hallazgos.
-          </div>
-        )}
-      </div>
-
-      <div style={{ marginTop: "24px" }}>
-        <h3 style={{ fontSize: "15px" }}>Información faltante</h3>
-
-        {plan.missingInfo.length > 0 ? (
-          plan.missingInfo.map((item) => (
-            <div
-              key={item}
-              style={{
-                marginBottom: "8px",
-                padding: "10px",
-                border: "1px solid #4b5563",
-                borderRadius: "8px",
-                fontSize: "14px",
-              }}
-            >
-              ⚠ {item}
-            </div>
-          ))
-        ) : (
-          <div
-            style={{
-              padding: "10px",
-              borderRadius: "8px",
-              border: "1px solid #4b5563",
-              color: "#d1d5db",
-            }}
-          >
-            No falta información.
-          </div>
-        )}
-      </div>
-
-      <div style={{ marginTop: "24px" }}>
-        <h3 style={{ fontSize: "15px" }}>Evidencia</h3>
-
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: "8px",
-          }}
-        >
-          {plan.evidence.length > 0 ? (
-            plan.evidence.map((item) => (
-              <EvidenceCard key={item} text={item} />
-            ))
-          ) : (
-            <div
-              style={{
-                padding: "10px",
-                borderRadius: "8px",
-                border: "1px solid #4b5563",
-                color: "#d1d5db",
-              }}
-            >
-              No hay evidencia disponible.
-            </div>
-          )}
-        </div>
-      </div>
-
-      <ActionPlan actions={plan.actions} />
-
-      <ApprovalCard
-        key={issueKey}
-        onApprove={handleApprove}
-        onReject={handleReject}
-      />
-
-      <ExecutionStatus state={executionState} />
-    </aside>
-  );
+export function WorkpilotPanel({ plan, result, slack, busy, approve, reject, retry }: {
+  plan: Plan | null; result?: ApprovalResult; slack?: Delivery; busy: boolean;
+  approve(): void; reject(): void; retry(): void;
+}) {
+  return <aside className="wp-panel">
+    <p className="wp-eyebrow">WORKPILOT · PROPUESTA</p>
+    {!plan ? <p>No hay propuesta guardada. La generación del agente está pendiente de P1.</p> : <>
+      <h2>Revisión de {plan.issueKey}</h2>
+      <p>Plan v{plan.version} · {plan.status}</p>
+      <h3>Hallazgos</h3>{plan.findings.map((s, i) => <p key={i}>{s}</p>)}
+      <h3>Hipótesis</h3>{plan.hypotheses.length ? plan.hypotheses.map((s, i) => <p key={i}>{s}</p>) : <p>Ninguna registrada.</p>}
+      <h3>Información faltante</h3>{plan.missingInfo.length ? plan.missingInfo.map((s, i) => <p key={i}>{s}</p>) : <p>Ninguna registrada.</p>}
+      <h3>Evidencia referenciada</h3>{[...new Set(plan.actions.flatMap(a => a.evidenceRefs))].map(s => <EvidenceCard key={s} text={s} />)}
+      <ActionPlan actions={plan.actions.map(a => a.type + ": " + JSON.stringify(a.payload))} />
+      {plan.actions.map(a => <details key={a.actionId}><summary>Antes / Después · {a.actionId}</summary>
+        <pre>{JSON.stringify({ before: a.before ?? null, after: a.after ?? a.payload }, null, 2)}</pre></details>)}
+      <h3>Aviso privado de Slack</h3>
+      <p>Destino fijo configurado en el servidor. Se enviará después del read-back de Jira.</p>
+      <blockquote>{plan.slackDraft.text || "Sin aviso."}</blockquote>
+      {plan.status === "pending" && <div className="wp-buttons">
+        <button disabled={busy} onClick={reject}>Rechazar</button>
+        <button disabled={busy} onClick={approve}>{busy ? "Procesando…" : "Aprobar cambios y aviso"}</button>
+      </div>}
+      {plan.status === "rejected" && <p role="status">Plan rechazado. No se aplicaron cambios.</p>}
+      {result && <section aria-label="Resultado de ejecución" aria-live="polite">
+        <h3>Resultado del servidor</h3>
+        {result.actions.map(a => <p key={a.actionId}>{a.actionId}: {a.status}
+          {a.providerId && <> · ID: <code>{a.providerId}</code></>}{a.error && <> · {a.error}</>}</p>)}
+        <p>Slack: {slack?.status || result.slackStatus}</p>
+        {result.actions.every(a => a.status === "succeeded") && result.slackStatus !== "sent" &&
+          <p>Jira actualizado; aviso de Slack pendiente.</p>}
+        {slack?.status === "succeeded" && <p>ID Slack: <code>{slack.providerId}</code></p>}
+        {slack && "error" in slack && <p>{slack.error.message}</p>}
+        {slack?.status === "failed" && slack.error.retryable &&
+          <button disabled={busy} onClick={retry}>Reintentar solo Slack</button>}
+      </section>}
+    </>}
+  </aside>;
 }

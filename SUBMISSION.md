@@ -1,74 +1,43 @@
-# Submission checklist
+# WorkPilot — submission preparada
 
-Choose your city on the [global event page](https://aitinkerers.org/hackathons/global/agents-everywhere). Use that city's participant portal for the submission deadline and published judging criteria, and its handbook for eligibility and required deliverables. See [hackathon-rules.md](hackathon-rules.md) for the agent-readable summary.
+## Descripción
 
-## Build eligibility
+WorkPilot ayuda a un líder técnico a preparar el handoff de un ticket de Jira desde un workspace web. El ticket seleccionado aporta el contexto; el diseño combina propuesta revisable, aprobación humana, escrituras verificadas en Jira y aviso privado de Slack.
 
-- [ ] Our submitted project is a net-new build created during the official hackathon period
-- [ ] Its core functionality was built during the event; we are not resubmitting or extending a pre-existing project and entering it as new
-- [ ] We identify inherited templates, libraries, prompts, components, and starter code separately from our event work
+Estado actual: P2/P3/P4 integrados a nivel de código y modo de ensayo disponible. P1 (razonamiento, generación real de propuestas y respuesta «¿qué falta?») pendiente. No afirmar Golden Path real completo hasta terminar esa integración y verificar proveedores.
 
-**What we inherited**
-<!-- Include this starter kit and any reused examples. -->
+## Construcción y atribución
 
-**What we built during the hackathon**
-<!-- Describe the new core interaction and point to its implementation. Running the supplied incident demo alone does not establish a new project. -->
+Heredado: starter Agents, Everywhere, Next.js, infraestructura CopilotKit, modelo y ejemplos de incidentes. Ver docs/STARTER-REVIEW.md.
 
-## Title and description
+Trabajo propio versionado: UI WorkPilot, contrato ActionPlan, adaptadores Jira, executor, integración de aprobación, persistencia, Slack saliente y QA. El equipo debe confirmar cuáles piezas fueron creadas durante el evento; no se certifica elegibilidad ni fechas desde el código.
 
-**What you built**
-<!-- Explain the complete interaction your demo shows. -->
+CopilotKit mantiene contexto de página y herramientas frontend. El modelo OpenAI/OpenRouter aún requiere la integración P1 para el comportamiento WorkPilot. Jira y Slack son servicios del producto; no se describen como sponsors del evento.
 
-**Who it is for**
-<!-- Name a person in a concrete situation. -->
+## Checklist final
 
-**Why the context matters**
-<!-- What did the agent know or do because it lived in this surface? -->
+- [ ] Confirmar elegibilidad y contribuciones del equipo.
+- [ ] Completar P1 e invocación desde el workspace.
+- [ ] Ejecutar npm run verify, build y test:e2e en entorno sin restricciones.
+- [ ] Validar checkout limpio y preflight real.
+- [ ] Aprobar una prueba explícita con Jira/Slack reales y mostrar read-back.
+- [ ] Probar rechazo, doble aprobación, snapshot obsoleto, Slack fallido y refresh.
+- [ ] Grabar video <=2 minutos siguiendo docs/P4-DEMO.md.
+- [ ] Confirmar URL pública del repo, video y post.
+- [ ] Confirmar deadline, ciudad y requisitos del portal local.
+- [ ] Revisar secretos y publicar/subir entrega por el equipo.
 
-**Sponsor technologies used**
-<!-- Name the tools you actually used and the visible contribution of each. -->
+## Texto para el portal, después de validar
 
-## Evidence for the judging criteria
+WorkPilot prepara el próximo paso de un ticket de Jira sin copiar su contexto a un chat. Muestra evidencia y acciones propuestas; el usuario decide. Cada cambio aprobado se verifica en Jira antes de notificar por Slack, y el estado se conserva para continuar el trabajo.
 
-Judges score each of the four official criteria from 1–5. This checklist helps you gather evidence; it does not guarantee a score. A working starter is a foundation for your own project.
+Repo: pendiente de confirmar acceso público. Video: pendiente de grabación. Post: pendiente. No se ha publicado ni enviado esta submission.
 
-| Official criterion | Show in your project and demo |
-|---|---|
-| Core Requirements & Functionality | Run one complete workflow in the intended environment, from user request through tools to a verified result. Repeat it with live integrations; offline tests alone do not prove the deployed flow. |
-| Innovation & Theme Alignment | Show the surrounding context before the prompt and explain the original interaction it enables. Compare with the context removed: what value would a standalone chatbox lose? |
-| Technical Execution & Integration | Show how tools, data, and the environment connect. Demonstrate a relevant failure or cancellation path and explain recovery, state persistence, and integration limits. |
-| Usefulness & Agentic Experience | Identify the user and problem, show a meaningful action in the surface, and demonstrate clear feedback and appropriate user control. Explain what work the agent saves. |
+## Evidencia para el jurado
 
-- [ ] We can point to visible evidence for every criterion
-- [ ] We distinguish live services, sample data, session-only state, and standalone recipes
-- [ ] Sponsor technologies contribute to the workflow; their count is not a judging criterion
-
-## Public repository
-
-- [ ] A new participant can run the quickstart from a clean clone
-- [ ] The README lists the credentials and separate processes required
-- [ ] `npm run verify` passes; optional recipe checks pass if used
-- [ ] `.env`, tokens, generated traces with sensitive data, and account secrets are excluded
-- [ ] Sample data, session-only state, and unimplemented integrations are clearly labeled
-
-## Two-minute demo video
-
-- [ ] Show the surface and existing context before the prompt
-- [ ] Demonstrate one complete interaction
-- [ ] Show a visible result: an actual record, local state change, or research source links
-- [ ] If showing an approval, distinguish the decision from execution and demonstrate the resulting behavior
-- [ ] State which sponsor technologies made the interaction possible
-- [ ] Keep the video within the event's limit and check audio
-
-See [demo prompts](dev-docs/demo-prompts.md) for a reproducible incident workflow.
-
-## Social post and final submission
-
-- [ ] Follow the organizer's posting and sponsor-tagging instructions
-- [ ] Link the public repository and video
-- [ ] Credit the sponsors you used and applicable local partners
-- [ ] Check the live integration once more before recording or submitting
-- [ ] Inspect the repository, video and screenshots for secrets
-
-Prepare the post and submission for a human to publish; running the starter kit
-does not publish either automatically.
+| Criterio | Evidencia a reunir |
+| --- | --- |
+| Core Requirements & Functionality | Flujo real completo, P1 → propuesta → aprobación → Jira → Slack |
+| Innovation & Theme Alignment | Mismo prompt con tickets distintos y contexto ambiental |
+| Technical Execution & Integration | Read-back, persistencia y manejo de fallo parcial |
+| Usefulness & Agentic Experience | Control humano y handoff con siguientes pasos claros |

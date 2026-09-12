@@ -1,3 +1,12 @@
+import assert from "node:assert/strict";
+import { describe, test } from "node:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { after } from "node:test";
+const testDirectory = mkdtempSync(join(tmpdir(), "workpilot-unit-"));
+process.env.WORKPILOT_DATA_DIR = testDirectory;
+after(() => rmSync(testDirectory, { recursive: true, force: true }));
 // ─── Unit tests: idempotency, plans, executor (dry-run) ──────────────────────
 // Run with: npx jest (or vitest) from apps/web
 // No live Jira calls — all Jira reads use MockJiraClient.
@@ -12,7 +21,7 @@ import {
 } from "../idempotency"
 import { computeSnapshotHash, storePlan, validatePlan } from "../plans"
 import { savePlan, getPlan } from "../persistence"
-import type { ActionPlan, WorkContext } from "../../../../../../packages/agent-core/src/workpilot/action-plan"
+import type { ActionPlan, WorkContext } from "agent-core/workpilot/action-plan"
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -58,38 +67,38 @@ function makePlan(overrides: Partial<ActionPlan> = {}): ActionPlan {
 
 describe("idempotency", () => {
   test("key format is planId:version:actionId", () => {
-    expect(idempotencyKey("plan-1", 2, "action-3")).toBe("plan-1:2:action-3")
+    assert.equal(idempotencyKey("plan-1", 2, "action-3"), "plan-1:2:action-3")
   })
 
   test("hasExecuted returns false before marking", () => {
-    expect(hasExecuted("plan-x:1:action-y")).toBe(false)
+    assert.equal(hasExecuted("plan-x:1:action-y"), false)
   })
 
   test("hasExecuted returns true after marking", () => {
     const key = idempotencyKey("plan-idem", 1, "action-a")
     markExecuted(key, "exec-001")
-    expect(hasExecuted(key)).toBe(true)
+    assert.equal(hasExecuted(key), true)
   })
 
   test("plan lock prevents concurrent execution", async () => {
     const acquired = acquirePlanLock("plan-lock-test")
-    expect(acquired).toBe(true)
+    assert.equal(acquired, true)
     const second = acquirePlanLock("plan-lock-test")
-    expect(second).toBe(false)
+    assert.equal(second, false)
     releasePlanLock("plan-lock-test")
     const third = acquirePlanLock("plan-lock-test")
-    expect(third).toBe(true)
+    assert.equal(third, true)
     releasePlanLock("plan-lock-test")
   })
 
   test("withPlanLock releases lock even on error", async () => {
-    await expect(
+    await assert.rejects(
       withPlanLock("plan-err", async () => {
         throw new Error("boom")
       })
-    ).rejects.toThrow("boom")
+    , /boom/)
     // Lock should be released — can acquire again
-    expect(acquirePlanLock("plan-err")).toBe(true)
+    assert.equal(acquirePlanLock("plan-err"), true)
     releasePlanLock("plan-err")
   })
 })
@@ -99,19 +108,19 @@ describe("idempotency", () => {
 describe("computeSnapshotHash", () => {
   test("same context produces same hash", () => {
     const ctx = makeContext()
-    expect(computeSnapshotHash(ctx)).toBe(computeSnapshotHash(ctx))
+    assert.equal(computeSnapshotHash(ctx), computeSnapshotHash(ctx))
   })
 
   test("different priority produces different hash", () => {
     const a = makeContext({ priority: "High" })
     const b = makeContext({ priority: "Highest" })
-    expect(computeSnapshotHash(a)).not.toBe(computeSnapshotHash(b))
+    assert.notEqual(computeSnapshotHash(a), computeSnapshotHash(b))
   })
 
   test("different assignee produces different hash", () => {
     const a = makeContext({ assignee: "carlos" })
     const b = makeContext({ assignee: "ana" })
-    expect(computeSnapshotHash(a)).not.toBe(computeSnapshotHash(b))
+    assert.notEqual(computeSnapshotHash(a), computeSnapshotHash(b))
   })
 
   test("subtask order does not affect hash", () => {
@@ -127,7 +136,7 @@ describe("computeSnapshotHash", () => {
         { issueKey: "WP-43", summary: "A", status: "Done" },
       ],
     })
-    expect(computeSnapshotHash(a)).toBe(computeSnapshotHash(b))
+    assert.equal(computeSnapshotHash(a), computeSnapshotHash(b))
   })
 })
 
@@ -138,21 +147,21 @@ describe("validatePlan", () => {
     const plan = makePlan()
     savePlan(plan)
     const result = validatePlan(plan.planId, plan.version, plan.snapshotHash)
-    expect(result.ok).toBe(true)
+    assert.equal(result.ok, true)
   })
 
   test("PLAN_NOT_FOUND for unknown planId", () => {
     const result = validatePlan("nonexistent", 1, "hash")
-    expect(result.ok).toBe(false)
-    if (!result.ok) expect(result.reason).toBe("PLAN_NOT_FOUND")
+    assert.equal(result.ok, false)
+    if (!result.ok) assert.equal(result.reason, "PLAN_NOT_FOUND")
   })
 
   test("PLAN_WRONG_VERSION for stale version", () => {
     const plan = makePlan({ planId: "plan-version-test", version: 3 })
     savePlan(plan)
     const result = validatePlan("plan-version-test", 2, plan.snapshotHash)
-    expect(result.ok).toBe(false)
-    if (!result.ok) expect(result.reason).toBe("PLAN_WRONG_VERSION")
+    assert.equal(result.ok, false)
+    if (!result.ok) assert.equal(result.reason, "PLAN_WRONG_VERSION")
   })
 
   test("PLAN_EXPIRED for past expiresAt", () => {
@@ -162,23 +171,23 @@ describe("validatePlan", () => {
     })
     savePlan(plan)
     const result = validatePlan("plan-expired", plan.version, plan.snapshotHash)
-    expect(result.ok).toBe(false)
-    if (!result.ok) expect(result.reason).toBe("PLAN_EXPIRED")
+    assert.equal(result.ok, false)
+    if (!result.ok) assert.equal(result.reason, "PLAN_EXPIRED")
   })
 
   test("SNAPSHOT_CHANGED when Jira changed", () => {
     const plan = makePlan({ planId: "plan-snapshot" })
     savePlan(plan)
     const result = validatePlan("plan-snapshot", plan.version, "different-hash")
-    expect(result.ok).toBe(false)
-    if (!result.ok) expect(result.reason).toBe("SNAPSHOT_CHANGED")
+    assert.equal(result.ok, false)
+    if (!result.ok) assert.equal(result.reason, "SNAPSHOT_CHANGED")
   })
 
   test("PLAN_NOT_PENDING for already executed plan", () => {
     const plan = makePlan({ planId: "plan-executed", status: "executed" })
     savePlan(plan)
     const result = validatePlan("plan-executed", plan.version, plan.snapshotHash)
-    expect(result.ok).toBe(false)
-    if (!result.ok) expect(result.reason).toBe("PLAN_NOT_PENDING")
+    assert.equal(result.ok, false)
+    if (!result.ok) assert.equal(result.reason, "PLAN_NOT_PENDING")
   })
 })

@@ -1,6 +1,6 @@
 // ─── Jira issue reads ─────────────────────────────────────────────────────────
 
-import type { Subtask } from "../../../../packages/agent-core/src/workpilot/action-plan"
+import type { Subtask } from "agent-core/workpilot/action-plan"
 import { getJiraClient, type IJiraClient } from "./client"
 import { createLogger } from "../logger"
 
@@ -14,7 +14,9 @@ type RawIssue = {
     summary: string
     status: { name: string }
     priority: { name: string }
-    assignee?: { displayName: string; emailAddress?: string }
+    assignee?: { displayName: string; accountId?: string; emailAddress?: string }
+    parent?: { key: string }
+    description?: unknown
     updated: string
     subtasks?: Array<{
       key: string
@@ -31,6 +33,9 @@ export type IssueFields = {
   status: string
   priority: string
   assignee?: string
+  assigneeAccountId?: string
+  parentKey?: string
+  description?: unknown
   updatedAt: string
 }
 
@@ -43,7 +48,7 @@ export async function getIssue(
   log.info("get issue", { issueKey })
 
   const raw = await client.get<RawIssue>(
-    `/issue/${issueKey}?fields=summary,status,priority,assignee,updated,subtasks`
+    `/issue/${issueKey}?fields=summary,status,priority,assignee,updated,subtasks,parent,description`
   )
 
   return {
@@ -52,6 +57,9 @@ export async function getIssue(
     status: raw.fields.status.name,
     priority: raw.fields.priority.name,
     assignee: raw.fields.assignee?.displayName,
+    assigneeAccountId: raw.fields.assignee?.accountId,
+    parentKey: raw.fields.parent?.key,
+    description: raw.fields.description,
     updatedAt: raw.fields.updated,
   }
 }
