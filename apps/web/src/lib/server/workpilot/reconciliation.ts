@@ -3,7 +3,6 @@
 // Reads back from Jira to determine if the action was applied — never re-executes.
 
 import type { Action, Execution } from "../../../../packages/agent-core/src/workpilot/action-plan"
-import type { ActionPayloadMap } from "../../../../packages/agent-core/src/workpilot/action-plan"
 import { getExecution, updateExecution } from "./persistence"
 import { getIssue, getSubtasks } from "../jira/issues"
 import { getIssueComments } from "../jira/comments"
@@ -35,12 +34,10 @@ export async function reconcileExecution(
   try {
     switch (action.type) {
       case "add_comment": {
-        const p = action.payload as ActionPayloadMap["add_comment"]
-        const comments = await getIssueComments(p.issueKey, client)
-        // Check if a comment with matching body was created after execution started
+        const comments = await getIssueComments(execution.issueKey, client)
         const match = comments.find(
           (c) =>
-            c.body.includes(p.body.slice(0, 60)) &&
+            c.body.includes(action.after.body.slice(0, 60)) &&
             new Date(c.created) >= new Date(execution.startedAt)
         )
         if (match) {
@@ -51,9 +48,8 @@ export async function reconcileExecution(
       }
 
       case "create_subtask": {
-        const p = action.payload as ActionPayloadMap["create_subtask"]
-        const subtasks = await getSubtasks(p.parentKey, client)
-        const match = subtasks.find((s) => s.summary === p.summary)
+        const subtasks = await getSubtasks(execution.issueKey, client)
+        const match = subtasks.find((s) => s.summary === action.after.summary)
         if (match) {
           resolved = true
           providerId = match.issueKey
@@ -62,16 +58,14 @@ export async function reconcileExecution(
       }
 
       case "assign_issue": {
-        const p = action.payload as ActionPayloadMap["assign_issue"]
-        const issue = await getIssue(p.issueKey, client)
-        resolved = issue.assignee === p.user
+        const issue = await getIssue(execution.issueKey, client)
+        resolved = issue.assignee === action.after.accountId
         break
       }
 
       case "set_priority": {
-        const p = action.payload as ActionPayloadMap["set_priority"]
-        const issue = await getIssue(p.issueKey, client)
-        resolved = issue.priority.toLowerCase() === p.priority.toLowerCase()
+        const issue = await getIssue(execution.issueKey, client)
+        resolved = issue.priority.toLowerCase() === action.after.toLowerCase()
         break
       }
     }

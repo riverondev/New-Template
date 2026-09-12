@@ -1,14 +1,127 @@
-// ─── Core domain types for WorkPilot ────────────────────────────────────────
-// Shared by agent-core (P1), frontend (P2), and server executor (P3).
-// All external writes go through ActionPlan → Server Executor → Jira.
-// The agent NEVER writes directly.
-//
-// Runtime validation: use parseActionPlan() / parseApprovalRequest() to
-// validate untrusted input (API bodies, agent output) before use.
-// These validators are intentionally dependency-free (no zod) so this
-// package stays importable from both server and edge runtimes.
+import {
+  ContractValidationError,
+  type ContractIssue,
+  type ContractResult,
+  integer,
+  isRecord,
+  isoTimestamp,
+  issueKey,
+  nonEmptyString,
+  optionalHttpUrl,
+  optionalString,
+  uniqueStrings,
+} from "./validation";
 
-// ─── Jira primitives ─────────────────────────────────────────────────────────
+export type EvidenceSourceType = "issue" | "comment" | "relation" | "subtask";
+export type EvidenceFlag = "potential_prompt_injection";
+
+export interface Evidence {
+  evidenceId: string;
+  sourceType: EvidenceSourceType;
+  issueKey: string;
+  commentId?: string;
+  relatedIssueKey?: string;
+  subtaskKey?: string;
+  excerpt: string;
+  url?: string;
+  flags?: EvidenceFlag[];
+}
+
+export interface ReasoningStatement {
+  statementId: string;
+  text: string;
+  evidenceRefs: string[];
+}
+
+export interface MissingInformation {
+  missingInfoId: string;
+  text: string;
+  blocking: boolean;
+  evidenceRefs: string[];
+}
+
+export type ActionStatus =
+  | "pending"
+  | "approved"
+  | "executing"
+  | "succeeded"
+  | "failed";
+
+interface BaseAction {
+  actionId: string;
+  evidenceRefs: string[];
+  status: ActionStatus;
+}
+
+export interface AssigneeValue {
+  accountId: string;
+  displayName?: string;
+}
+
+export interface AssignIssueAction extends BaseAction {
+  type: "assign_issue";
+  before?: AssigneeValue | null;
+  after: AssigneeValue;
+}
+
+export interface SetPriorityAction extends BaseAction {
+  type: "set_priority";
+  before?: string;
+  after: string;
+}
+
+export interface CreateSubtaskAction extends BaseAction {
+  type: "create_subtask";
+  after: {
+    summary: string;
+    description?: string;
+  };
+}
+
+export interface AddCommentAction extends BaseAction {
+  type: "add_comment";
+  after: {
+    body: string;
+  };
+}
+
+export type Action =
+  | AssignIssueAction
+  | SetPriorityAction
+  | CreateSubtaskAction
+  | AddCommentAction;
+
+export type ActionType = Action["type"];
+
+export interface SlackDraft {
+  channel: string;
+  text: string;
+}
+
+/**
+ * Candidate shared contract for P1 -> P2/P3. Runtime integration must still
+ * agree on this exact shape before it is treated as frozen.
+ */
+export interface ActionPlan {
+  planId: string;
+  version: number;
+  issueKey: string;
+  snapshotVersion: string;
+  snapshotHash?: string;
+  evidence: Evidence[];
+  findings: ReasoningStatement[];
+  hypotheses: ReasoningStatement[];
+  missingInfo: MissingInformation[];
+  actions: Action[];
+  slackDraft?: SlackDraft;
+  expiresAt: string;
+  createdAt?: string;
+  status?: "pending" | "approved" | "rejected" | "executed" | "expired" | "invalidated";
+}
+
+// ─── P3 executor types ────────────────────────────────────────────────────────
+// These types are used by the server executor (P3) and are not part of the
+// agent-generated ActionPlan contract above.
 
 export type Comment = {
   id: string
@@ -21,7 +134,7 @@ export type RelatedIssue = {
   issueKey: string
   summary: string
   status: string
-  linkType: string // "blocks" | "is blocked by" | "relates to" | ...
+  linkType: string
 }
 
 export type Subtask = {
@@ -29,17 +142,6 @@ export type Subtask = {
   summary: string
   status: string
 }
-
-// ─── WorkContext ──────────────────────────────────────────────────────────────
-// Snapshot of a Jira issue at the moment the agent reads it.
-//
-// Fields that trigger SNAPSHOT_CHANGED if they change before approval:
-//   status, priority, assignee, existingSubtasks (keys), relatedIssues (keys)
-//
-// Fields intentionally excluded from the hash (do not trigger invalidation):
-//   comments (append-only, new comments don't block execution)
-//   summary   (cosmetic, doesn't affect action safety)
-//   fetchedAt (always different)
 
 export type WorkContext = {
   issueKey: string
@@ -50,54 +152,9 @@ export type WorkContext = {
   comments: Comment[]
   relatedIssues: RelatedIssue[]
   existingSubtasks: Subtask[]
-  snapshotVersion: string // opaque version token from Jira (e.g. etag or updated timestamp)
-  snapshotHash: string    // deterministic hash of fields relevant to execution
-  fetchedAt: string       // ISO timestamp
-}
-
-// ─── Evidence ────────────────────────────────────────────────────────────────
-// Every agent conclusion must trace back to a Jira artifact.
-
-export type Evidence = {
-  sourceType: "issue" | "comment" | "relation" | "subtask"
-  issueKey: string
-  commentId?: string
-  excerpt: string
-  url?: string
-}
-
-// ─── Action ──────────────────────────────────────────────────────────────────
-// A single proposed write. The executor processes each action independently.
-//
-// Error classification:
-//   transient  → retryable: true  (network timeout, 429, 502/503/504)
-//   permanent  → retryable: false (400 bad request, 404 not found, 403 forbidden)
-
-export type ActionType =
-  | "assign_issue"
-  | "set_priority"
-  | "create_subtask"
-  | "add_comment"
-
-export type ActionStatus =
-  | "pending"
-  | "approved"
-  | "executing"
-  | "succeeded"
-  | "failed"
-  | "skipped"    // idempotency: already executed
-  | "reconciling" // uncertain outcome, read-back in progress
-
-export type Action = {
-  actionId: string
-  type: ActionType
-  payload: Record<string, unknown> // type-safe at call site via ActionPayloadMap
-  before?: unknown
-  after?: unknown
-  evidenceRefs: string[] // Evidence excerpt references
-  status: ActionStatus
-  dryRun?: boolean // if true, log intent but do not write to Jira
-  errorReason?: string // human-readable reason for failed/skipped status
+  snapshotVersion: string
+  snapshotHash: string
+  fetchedAt: string
 }
 
 // Typed payloads per action type — used by executor for safe access
@@ -108,47 +165,12 @@ export type ActionPayloadMap = {
   add_comment:    { issueKey: string; body: string }
 }
 
-// ─── ActionPlan ───────────────────────────────────────────────────────────────
-// Generated by the agent. Persisted server-side. Approved by the user.
-// version increments on every regeneration — executor rejects stale versions.
-
-export type ActionPlan = {
-  planId: string
-  version: number
-  issueKey: string
-  snapshotVersion: string
-  snapshotHash: string   // must match WorkContext.snapshotHash at approval time
-
-  findings: string[]       // FACTS: what Jira demonstrates
-  hypotheses: string[]     // HYPOTHESES: agent interpretations
-  missingInfo: string[]    // MISSING: data needed to act safely
-
-  actions: Action[]
-
-  slackDraft: {
-    channel: string
-    text: string
-  }
-
-  expiresAt: string  // ISO — executor rejects after this timestamp
-  createdAt: string
-  status: "pending" | "approved" | "rejected" | "executed" | "expired" | "invalidated"
-}
-
-// ─── Execution ────────────────────────────────────────────────────────────────
-// Persistent record of every action execution attempt.
-// One Execution row per action per approval attempt.
-//
-// Error classification stored in `retryable`:
-//   true  → transient error, safe to retry (timeout, rate-limit, 5xx)
-//   false → permanent error, do not retry (bad payload, 403, 404)
-
 export type ExecutionStatus =
   | "started"
   | "succeeded"
   | "failed"
-  | "uncertain"   // API responded but read-back inconclusive
-  | "reconciled"  // uncertain → resolved via reconciliation
+  | "uncertain"
+  | "reconciled"
 
 export type Execution = {
   executionId: string
@@ -160,15 +182,14 @@ export type Execution = {
   finishedAt?: string
   status: ExecutionStatus
   provider: "jira" | "slack"
-  providerId?: string  // real Jira issue key, comment ID, etc. from read-back
+  providerId?: string
   error?: string
-  errorCode?: string   // machine-readable: TIMEOUT | RATE_LIMITED | FORBIDDEN | NOT_FOUND | BAD_REQUEST | UNKNOWN
+  errorCode?: string
   retryable: boolean
   dryRun: boolean
-  latencyMs?: number   // finishedAt - startedAt in ms, for metrics
+  latencyMs?: number
 }
 
-// Machine-readable Jira error codes used in Execution.errorCode / ActionResult.errorCode
 export type JiraErrorCode =
   | "TIMEOUT"
   | "RATE_LIMITED"
@@ -186,24 +207,19 @@ export function statusToJiraErrorCode(status: number): JiraErrorCode {
   return "UNKNOWN"
 }
 
-// ─── Approval request ────────────────────────────────────────────────────────
-// Shape of POST /api/workpilot/approve body
-
 export type ApprovalRequest = {
   planId: string
   version: number
   dryRun?: boolean
 }
 
-// ─── Approval result ─────────────────────────────────────────────────────────
-
 export type ActionResult = {
   actionId: string
   status: ActionStatus
   providerId?: string
   error?: string
-  errorCode?: string   // mirrors Execution.errorCode — returned to frontend
-  retryable?: boolean  // frontend uses this to decide whether to show "Retry"
+  errorCode?: string
+  retryable?: boolean
 }
 
 export type ApprovalResult = {
@@ -213,10 +229,6 @@ export type ApprovalResult = {
   slackStatus: "sent" | "pending" | "failed" | "skipped"
   slackProviderId?: string
 }
-
-// ─── Runtime validators ───────────────────────────────────────────────────────
-// Validate untrusted input without a schema library.
-// Throw with a descriptive message on invalid shape.
 
 export function parseApprovalRequest(raw: unknown): ApprovalRequest {
   if (!raw || typeof raw !== "object") throw new Error("ApprovalRequest must be an object")
@@ -234,25 +246,546 @@ export function parseApprovalRequest(raw: unknown): ApprovalRequest {
   }
 }
 
-export function parseActionPlan(raw: unknown): ActionPlan {
-  if (!raw || typeof raw !== "object") throw new Error("ActionPlan must be an object")
-  const r = raw as Record<string, unknown>
-  const required: Array<[string, string]> = [
-    ["planId",          "string"],
-    ["issueKey",        "string"],
-    ["snapshotVersion", "string"],
-    ["snapshotHash",    "string"],
-    ["expiresAt",       "string"],
-    ["createdAt",       "string"],
-  ]
-  for (const [field, type] of required) {
-    if (typeof r[field] !== type || !r[field]) {
-      throw new Error(`ActionPlan.${field} must be a non-empty ${type}`)
+// ─── P1 validators ────────────────────────────────────────────────────────────
+
+function parseSourceType(
+  value: unknown,
+  path: string,
+  issues: ContractIssue[],
+): EvidenceSourceType | undefined {
+  if (value === "issue" || value === "comment" || value === "relation" || value === "subtask") {
+    return value;
+  }
+  issues.push({
+    code: "invalid_value",
+    path,
+    message: 'expected "issue", "comment", "relation", or "subtask"',
+  });
+  return undefined;
+}
+
+function parseEvidenceFlags(
+  value: unknown,
+  path: string,
+  issues: ContractIssue[],
+): EvidenceFlag[] | undefined {
+  if (value === undefined) return undefined;
+  const flags = uniqueStrings(value, path, issues);
+  if (!flags) return undefined;
+  flags.forEach((flag, index) => {
+    if (flag !== "potential_prompt_injection") {
+      issues.push({
+        code: "invalid_value",
+        path: `${path}[${index}]`,
+        message: 'expected "potential_prompt_injection"',
+      });
+    }
+  });
+  return issues.some((issue) => issue.path.startsWith(path))
+    ? undefined
+    : (flags as EvidenceFlag[]);
+}
+
+function parseEvidenceValue(
+  value: unknown,
+  path: string,
+  issues: ContractIssue[],
+): Evidence | undefined {
+  const start = issues.length;
+  if (!isRecord(value)) {
+    issues.push({ code: "invalid_type", path, message: "expected an object" });
+    return undefined;
+  }
+  const evidenceId = nonEmptyString(value.evidenceId, `${path}.evidenceId`, issues);
+  const sourceType = parseSourceType(value.sourceType, `${path}.sourceType`, issues);
+  const parsedIssueKey = issueKey(value.issueKey, `${path}.issueKey`, issues);
+  const commentId = optionalString(value.commentId, `${path}.commentId`, issues);
+  const relatedIssueKey = value.relatedIssueKey === undefined
+    ? undefined
+    : issueKey(value.relatedIssueKey, `${path}.relatedIssueKey`, issues);
+  const subtaskKey = value.subtaskKey === undefined
+    ? undefined
+    : issueKey(value.subtaskKey, `${path}.subtaskKey`, issues);
+  const excerpt = nonEmptyString(value.excerpt, `${path}.excerpt`, issues);
+  const url = optionalHttpUrl(value.url, `${path}.url`, issues);
+  const flags = parseEvidenceFlags(value.flags, `${path}.flags`, issues);
+
+  if (sourceType === "comment" && !commentId) {
+    issues.push({
+      code: "missing_value",
+      path: `${path}.commentId`,
+      message: "comment evidence requires commentId",
+    });
+  }
+  if (sourceType === "relation" && !relatedIssueKey) {
+    issues.push({
+      code: "missing_value",
+      path: `${path}.relatedIssueKey`,
+      message: "relation evidence requires relatedIssueKey",
+    });
+  }
+  if (sourceType === "subtask" && !subtaskKey) {
+    issues.push({
+      code: "missing_value",
+      path: `${path}.subtaskKey`,
+      message: "subtask evidence requires subtaskKey",
+    });
+  }
+  const provenanceFields = [
+    ["commentId", value.commentId],
+    ["relatedIssueKey", value.relatedIssueKey],
+    ["subtaskKey", value.subtaskKey],
+  ] as const;
+  const allowedField = sourceType === "comment"
+    ? "commentId"
+    : sourceType === "relation"
+      ? "relatedIssueKey"
+      : sourceType === "subtask"
+        ? "subtaskKey"
+        : undefined;
+  for (const [field, fieldValue] of provenanceFields) {
+    if (fieldValue !== undefined && field !== allowedField) {
+      issues.push({
+        code: "policy_violation",
+        path: `${path}.${field}`,
+        message: `${field} is not valid for ${sourceType ?? "unknown"} evidence`,
+      });
     }
   }
-  if (typeof r["version"] !== "number" || !Number.isInteger(r["version"]) || r["version"] < 1) {
-    throw new Error("ActionPlan.version must be a positive integer")
+
+  return issues.length === start && evidenceId && sourceType && parsedIssueKey && excerpt
+    ? {
+        evidenceId,
+        sourceType,
+        issueKey: parsedIssueKey,
+        ...(commentId ? { commentId } : {}),
+        ...(relatedIssueKey ? { relatedIssueKey } : {}),
+        ...(subtaskKey ? { subtaskKey } : {}),
+        excerpt,
+        ...(url ? { url } : {}),
+        ...(flags ? { flags } : {}),
+      }
+    : undefined;
+}
+
+function parseReasoningStatement(
+  value: unknown,
+  path: string,
+  issues: ContractIssue[],
+): ReasoningStatement | undefined {
+  const start = issues.length;
+  if (!isRecord(value)) {
+    issues.push({ code: "invalid_type", path, message: "expected an object" });
+    return undefined;
   }
-  if (!Array.isArray(r["actions"])) throw new Error("ActionPlan.actions must be an array")
-  return raw as ActionPlan
+  const statementId = nonEmptyString(value.statementId, `${path}.statementId`, issues);
+  const text = nonEmptyString(value.text, `${path}.text`, issues);
+  const evidenceRefs = uniqueStrings(value.evidenceRefs, `${path}.evidenceRefs`, issues);
+  if (evidenceRefs && evidenceRefs.length === 0) {
+    issues.push({
+      code: "missing_value",
+      path: `${path}.evidenceRefs`,
+      message: "a material statement requires evidence",
+    });
+  }
+  return issues.length === start && statementId && text && evidenceRefs
+    ? { statementId, text, evidenceRefs }
+    : undefined;
+}
+
+function parseMissingInformation(
+  value: unknown,
+  path: string,
+  issues: ContractIssue[],
+): MissingInformation | undefined {
+  const start = issues.length;
+  if (!isRecord(value)) {
+    issues.push({ code: "invalid_type", path, message: "expected an object" });
+    return undefined;
+  }
+  const missingInfoId = nonEmptyString(value.missingInfoId, `${path}.missingInfoId`, issues);
+  const text = nonEmptyString(value.text, `${path}.text`, issues);
+  const evidenceRefs = uniqueStrings(value.evidenceRefs, `${path}.evidenceRefs`, issues);
+  if (typeof value.blocking !== "boolean") {
+    issues.push({
+      code: value.blocking === undefined ? "missing_value" : "invalid_type",
+      path: `${path}.blocking`,
+      message: "expected a boolean",
+    });
+  }
+  return issues.length === start && missingInfoId && text && evidenceRefs && typeof value.blocking === "boolean"
+    ? { missingInfoId, text, blocking: value.blocking, evidenceRefs }
+    : undefined;
+}
+
+function parseStatus(
+  value: unknown,
+  path: string,
+  issues: ContractIssue[],
+): ActionStatus | undefined {
+  if (
+    value === "pending" ||
+    value === "approved" ||
+    value === "executing" ||
+    value === "succeeded" ||
+    value === "failed"
+  ) {
+    return value;
+  }
+  issues.push({ code: "invalid_value", path, message: "invalid action status" });
+  return undefined;
+}
+
+function parseAssigneeValue(
+  value: unknown,
+  path: string,
+  issues: ContractIssue[],
+): AssigneeValue | undefined {
+  if (!isRecord(value)) {
+    issues.push({ code: "invalid_type", path, message: "expected an object" });
+    return undefined;
+  }
+  const accountId = nonEmptyString(value.accountId, `${path}.accountId`, issues);
+  const displayName = optionalString(value.displayName, `${path}.displayName`, issues);
+  return accountId
+    ? { accountId, ...(displayName ? { displayName } : {}) }
+    : undefined;
+}
+
+function parseActionValue(
+  value: unknown,
+  path: string,
+  issues: ContractIssue[],
+): Action | undefined {
+  const start = issues.length;
+  if (!isRecord(value)) {
+    issues.push({ code: "invalid_type", path, message: "expected an object" });
+    return undefined;
+  }
+  const actionId = nonEmptyString(value.actionId, `${path}.actionId`, issues);
+  const evidenceRefs = uniqueStrings(value.evidenceRefs, `${path}.evidenceRefs`, issues);
+  const status = parseStatus(value.status, `${path}.status`, issues);
+  if (evidenceRefs && evidenceRefs.length === 0) {
+    issues.push({
+      code: "missing_value",
+      path: `${path}.evidenceRefs`,
+      message: "an action requires evidence",
+    });
+  }
+
+  if (value.type === "assign_issue") {
+    const after = parseAssigneeValue(value.after, `${path}.after`, issues);
+    const before = value.before === undefined
+      ? undefined
+      : value.before === null
+        ? null
+        : parseAssigneeValue(value.before, `${path}.before`, issues);
+    return issues.length === start && actionId && evidenceRefs && status && after
+      ? {
+          actionId,
+          type: "assign_issue",
+          ...(value.before !== undefined ? { before: before ?? null } : {}),
+          after,
+          evidenceRefs,
+          status,
+        }
+      : undefined;
+  }
+
+  if (value.type === "set_priority") {
+    const before = value.before === undefined
+      ? undefined
+      : nonEmptyString(value.before, `${path}.before`, issues);
+    const after = nonEmptyString(value.after, `${path}.after`, issues);
+    return issues.length === start && actionId && evidenceRefs && status && after
+      ? {
+          actionId,
+          type: "set_priority",
+          ...(before ? { before } : {}),
+          after,
+          evidenceRefs,
+          status,
+        }
+      : undefined;
+  }
+
+  if (value.type === "create_subtask") {
+    if (!isRecord(value.after)) {
+      issues.push({ code: "invalid_type", path: `${path}.after`, message: "expected an object" });
+      return undefined;
+    }
+    const summary = nonEmptyString(value.after.summary, `${path}.after.summary`, issues);
+    const description = optionalString(value.after.description, `${path}.after.description`, issues);
+    return issues.length === start && actionId && evidenceRefs && status && summary
+      ? {
+          actionId,
+          type: "create_subtask",
+          after: { summary, ...(description ? { description } : {}) },
+          evidenceRefs,
+          status,
+        }
+      : undefined;
+  }
+
+  if (value.type === "add_comment") {
+    if (!isRecord(value.after)) {
+      issues.push({ code: "invalid_type", path: `${path}.after`, message: "expected an object" });
+      return undefined;
+    }
+    const body = nonEmptyString(value.after.body, `${path}.after.body`, issues);
+    return issues.length === start && actionId && evidenceRefs && status && body
+      ? {
+          actionId,
+          type: "add_comment",
+          after: { body },
+          evidenceRefs,
+          status,
+        }
+      : undefined;
+  }
+
+  issues.push({
+    code: "invalid_value",
+    path: `${path}.type`,
+    message: "action type is outside the WorkPilot allowlist",
+  });
+  return undefined;
+}
+
+function parseList<T>(
+  value: unknown,
+  path: string,
+  issues: ContractIssue[],
+  parser: (item: unknown, itemPath: string, itemIssues: ContractIssue[]) => T | undefined,
+): T[] | undefined {
+  if (!Array.isArray(value)) {
+    issues.push({
+      code: value === undefined ? "missing_value" : "invalid_type",
+      path,
+      message: "expected an array",
+    });
+    return undefined;
+  }
+  return value.flatMap((item, index) => {
+    const parsed = parser(item, `${path}[${index}]`, issues);
+    return parsed ? [parsed] : [];
+  });
+}
+
+export function safeParseEvidence(value: unknown): ContractResult<Evidence> {
+  const issues: ContractIssue[] = [];
+  const parsed = parseEvidenceValue(value, "$", issues);
+  return parsed && issues.length === 0
+    ? { ok: true, value: parsed }
+    : { ok: false, issues };
+}
+
+export function parseEvidenceList(value: unknown): Evidence[] {
+  const issues: ContractIssue[] = [];
+  const parsed = parseList(value, "$", issues, parseEvidenceValue);
+  if (parsed) {
+    reportDuplicates(
+      parsed.map((item, index) => ({ id: item.evidenceId, path: `$[${index}].evidenceId` })),
+      issues,
+    );
+  }
+  if (!parsed || issues.length) {
+    throw new ContractValidationError("Evidence[]", issues);
+  }
+  return parsed;
+}
+
+export function safeParseAction(value: unknown): ContractResult<Action> {
+  const issues: ContractIssue[] = [];
+  const parsed = parseActionValue(value, "$", issues);
+  return parsed && issues.length === 0
+    ? { ok: true, value: parsed }
+    : { ok: false, issues };
+}
+
+export function parseActions(value: unknown): Action[] {
+  const issues: ContractIssue[] = [];
+  const parsed = parseList(value, "$", issues, parseActionValue);
+  if (parsed) {
+    reportDuplicates(
+      parsed.map((item, index) => ({ id: item.actionId, path: `$[${index}].actionId` })),
+      issues,
+    );
+  }
+  if (!parsed || issues.length) {
+    throw new ContractValidationError("Action[]", issues);
+  }
+  return parsed;
+}
+
+function parseSlackDraft(
+  value: unknown,
+  path: string,
+  issues: ContractIssue[],
+): SlackDraft | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (!isRecord(value)) {
+    issues.push({ code: "invalid_type", path, message: "expected an object" });
+    return undefined;
+  }
+  const channel = nonEmptyString(value.channel, `${path}.channel`, issues);
+  const text = nonEmptyString(value.text, `${path}.text`, issues);
+  return channel && text ? { channel, text } : undefined;
+}
+
+function reportDuplicates(
+  values: readonly { id: string; path: string }[],
+  issues: ContractIssue[],
+) {
+  const seen = new Set<string>();
+  for (const value of values) {
+    if (seen.has(value.id)) {
+      issues.push({
+        code: "duplicate_value",
+        path: value.path,
+        message: `duplicate identifier ${value.id}`,
+      });
+    }
+    seen.add(value.id);
+  }
+}
+
+function reportUnknownEvidenceRefs(
+  values: readonly { refs: string[]; path: string }[],
+  evidenceIds: Set<string>,
+  issues: ContractIssue[],
+) {
+  for (const value of values) {
+    value.refs.forEach((ref, index) => {
+      if (!evidenceIds.has(ref)) {
+        issues.push({
+          code: "unknown_reference",
+          path: `${value.path}[${index}]`,
+          message: `unknown evidence reference ${ref}`,
+        });
+      }
+    });
+  }
+}
+
+export function safeParseActionPlan(value: unknown): ContractResult<ActionPlan> {
+  if (!isRecord(value)) {
+    return {
+      ok: false,
+      issues: [{ code: "invalid_type", path: "$", message: "expected an object" }],
+    };
+  }
+  const issues: ContractIssue[] = [];
+  const planId = nonEmptyString(value.planId, "$.planId", issues);
+  const version = integer(value.version, "$.version", issues, 1);
+  const parsedIssueKey = issueKey(value.issueKey, "$.issueKey", issues);
+  const snapshotVersion = nonEmptyString(value.snapshotVersion, "$.snapshotVersion", issues);
+  const evidence = parseList(value.evidence, "$.evidence", issues, parseEvidenceValue);
+  const findings = parseList(value.findings, "$.findings", issues, parseReasoningStatement);
+  const hypotheses = parseList(value.hypotheses, "$.hypotheses", issues, parseReasoningStatement);
+  const missingInfo = parseList(value.missingInfo, "$.missingInfo", issues, parseMissingInformation);
+  const actions = parseList(value.actions, "$.actions", issues, parseActionValue);
+  const slackDraft = parseSlackDraft(value.slackDraft, "$.slackDraft", issues);
+  const expiresAt = isoTimestamp(value.expiresAt, "$.expiresAt", issues);
+
+  if (evidence) {
+    reportDuplicates(
+      evidence.map((item, index) => ({ id: item.evidenceId, path: `$.evidence[${index}].evidenceId` })),
+      issues,
+    );
+    if (parsedIssueKey) {
+      evidence.forEach((item, index) => {
+        if (item.issueKey !== parsedIssueKey) {
+          issues.push({
+            code: "policy_violation",
+            path: `$.evidence[${index}].issueKey`,
+            message: `evidence must belong to plan issue ${parsedIssueKey}`,
+          });
+        }
+      });
+    }
+  }
+  if (findings && hypotheses) {
+    reportDuplicates(
+      [
+        ...findings.map((item, index) => ({
+          id: item.statementId,
+          path: `$.findings[${index}].statementId`,
+        })),
+        ...hypotheses.map((item, index) => ({
+          id: item.statementId,
+          path: `$.hypotheses[${index}].statementId`,
+        })),
+      ],
+      issues,
+    );
+  }
+  if (missingInfo) {
+    reportDuplicates(
+      missingInfo.map((item, index) => ({ id: item.missingInfoId, path: `$.missingInfo[${index}].missingInfoId` })),
+      issues,
+    );
+  }
+  if (actions) {
+    reportDuplicates(
+      actions.map((item, index) => ({ id: item.actionId, path: `$.actions[${index}].actionId` })),
+      issues,
+    );
+  }
+
+  if (evidence && findings && hypotheses && missingInfo && actions) {
+    const evidenceIds = new Set(evidence.map((item) => item.evidenceId));
+    reportUnknownEvidenceRefs(
+      [
+        ...findings.map((item, index) => ({ refs: item.evidenceRefs, path: `$.findings[${index}].evidenceRefs` })),
+        ...hypotheses.map((item, index) => ({ refs: item.evidenceRefs, path: `$.hypotheses[${index}].evidenceRefs` })),
+        ...missingInfo.map((item, index) => ({ refs: item.evidenceRefs, path: `$.missingInfo[${index}].evidenceRefs` })),
+        ...actions.map((item, index) => ({ refs: item.evidenceRefs, path: `$.actions[${index}].evidenceRefs` })),
+      ],
+      evidenceIds,
+      issues,
+    );
+  }
+
+  if (
+    issues.length ||
+    !planId ||
+    version === undefined ||
+    !parsedIssueKey ||
+    !snapshotVersion ||
+    !evidence ||
+    !findings ||
+    !hypotheses ||
+    !missingInfo ||
+    !actions ||
+    !expiresAt
+  ) {
+    return { ok: false, issues };
+  }
+  return {
+    ok: true,
+    value: {
+      planId,
+      version,
+      issueKey: parsedIssueKey,
+      snapshotVersion,
+      evidence,
+      findings,
+      hypotheses,
+      missingInfo,
+      actions,
+      ...(slackDraft ? { slackDraft } : {}),
+      expiresAt,
+    },
+  };
+}
+
+export function parseActionPlan(value: unknown): ActionPlan {
+  const result = safeParseActionPlan(value);
+  if (!result.ok) {
+    throw new ContractValidationError("ActionPlan", result.issues);
+  }
+  return result.value;
 }

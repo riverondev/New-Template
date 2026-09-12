@@ -6,7 +6,6 @@
 import type {
   Action,
   ActionPlan,
-  ActionPayloadMap,
   ActionResult,
   ApprovalRequest,
   ApprovalResult,
@@ -42,26 +41,23 @@ async function writeToJira(action: Action, dryRun: boolean): Promise<string | un
 
   switch (action.type) {
     case "add_comment": {
-      const p = action.payload as ActionPayloadMap["add_comment"]
       const res = await client.post<{ id: string }>(
-        `/issue/${p.issueKey}/comment`,
-        { body: { type: "doc", version: 1, content: [{ type: "paragraph", content: [{ type: "text", text: p.body }] }] } }
+        `/issue/${plan.issueKey}/comment`,
+        { body: { type: "doc", version: 1, content: [{ type: "paragraph", content: [{ type: "text", text: action.after.body }] }] } }
       )
       return res.id
     }
 
     case "create_subtask": {
-      const p = action.payload as ActionPayloadMap["create_subtask"]
       const env = loadEnv()
       const res = await client.post<{ key: string }>("/issue", {
         fields: {
           project: { key: env.jira.projectKey },
-          parent: { key: p.parentKey },
-          summary: p.summary,
-          description: p.description
-            ? { type: "doc", version: 1, content: [{ type: "paragraph", content: [{ type: "text", text: p.description }] }] }
+          parent: { key: plan.issueKey },
+          summary: action.after.summary,
+          description: action.after.description
+            ? { type: "doc", version: 1, content: [{ type: "paragraph", content: [{ type: "text", text: action.after.description }] }] }
             : undefined,
-          assignee: p.assignee ? { name: p.assignee } : undefined,
           issuetype: { name: "Subtask" },
         },
       })
@@ -69,15 +65,13 @@ async function writeToJira(action: Action, dryRun: boolean): Promise<string | un
     }
 
     case "assign_issue": {
-      const p = action.payload as ActionPayloadMap["assign_issue"]
-      await client.put(`/issue/${p.issueKey}/assignee`, { name: p.user })
+      await client.put(`/issue/${plan.issueKey}/assignee`, { accountId: action.after.accountId })
       return undefined
     }
 
     case "set_priority": {
-      const p = action.payload as ActionPayloadMap["set_priority"]
-      await client.put(`/issue/${p.issueKey}`, {
-        fields: { priority: { name: p.priority } },
+      await client.put(`/issue/${plan.issueKey}`, {
+        fields: { priority: { name: action.after } },
       })
       return undefined
     }
@@ -86,14 +80,13 @@ async function writeToJira(action: Action, dryRun: boolean): Promise<string | un
 
 // ─── Read-back verification ───────────────────────────────────────────────────
 
-async function verifyWrite(action: Action, providerId?: string): Promise<boolean> {
+async function verifyWrite(action: Action, issueKey: string, providerId?: string): Promise<boolean> {
   const client = getJiraClient()
 
   switch (action.type) {
     case "add_comment": {
       if (!providerId) return false
-      const p = action.payload as ActionPayloadMap["add_comment"]
-      const comments = await getIssueComments(p.issueKey, client)
+      const comments = await getIssueComments(issueKey, client)
       return comments.some((c) => c.id === providerId)
     }
 
@@ -104,15 +97,13 @@ async function verifyWrite(action: Action, providerId?: string): Promise<boolean
     }
 
     case "assign_issue": {
-      const p = action.payload as ActionPayloadMap["assign_issue"]
-      const issue = await getIssue(p.issueKey, client)
-      return issue.assignee === p.user
+      const issue = await getIssue(issueKey, client)
+      return issue.assignee === action.after.accountId
     }
 
     case "set_priority": {
-      const p = action.payload as ActionPayloadMap["set_priority"]
-      const issue = await getIssue(p.issueKey, client)
-      return issue.priority.toLowerCase() === p.priority.toLowerCase()
+      const issue = await getIssue(issueKey, client)
+      return issue.priority.toLowerCase() === action.after.toLowerCase()
     }
   }
 }
@@ -122,7 +113,7 @@ async function verifyWrite(action: Action, providerId?: string): Promise<boolean
 async function executeAction(
   action: Action,
   plan: ActionPlan,
-  dryRun: boolean
+  dryRun: boolean,
 ): Promise<ActionResult> {
   const key = idempotencyKey(plan.planId, plan.version, action.actionId)
 
@@ -153,7 +144,7 @@ async function executeAction(
     providerId = await writeToJira(action, dryRun)
 
     // Read-back verification
-    const verified = dryRun || (await verifyWrite(action, providerId))
+    const verified = dryRun || (await verifyWrite(action, plan.issueKey, providerId))
 
     if (!verified) {
       updateExecution(executionId, {
