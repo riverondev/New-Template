@@ -107,25 +107,30 @@ export function applyActionPolicy(
     }
 
     if (action.type === "create_subtask") {
-      if (context.coverage.subtasks !== "complete" || context.coverage.relatedIssues !== "complete" || context.coverage.comments !== "complete") {
+      const after = action.after as { summary?: string } | undefined;
+      if (!after?.summary) {
+        rejected.push(rejection(action, "incomplete_context", "Create-subtask actions require a summary."));
+        continue;
+      }
+      if (context.coverage?.subtasks !== "complete" || context.coverage?.relatedIssues !== "complete" || context.coverage?.comments !== "complete") {
         rejected.push(rejection(action, "incomplete_context", "Cannot exclude duplicate work until subtasks, relations, and comments are available."));
         continue;
       }
       const duplicateSubtask = context.existingSubtasks.find((item) =>
-        similarWork(action.after.summary, item.summary),
+        similarWork(after.summary, item.summary),
       );
       if (duplicateSubtask) {
         rejected.push(rejection(action, "duplicate_work", "Equivalent work already exists as a subtask.", duplicateSubtask.issueKey));
         continue;
       }
       const duplicateRelation = context.relatedIssues.find((item) =>
-        similarWork(action.after.summary, item.summary),
+        similarWork(after.summary, item.summary),
       );
       if (duplicateRelation) {
         rejected.push(rejection(action, "duplicate_work", "Equivalent work already exists as a related issue.", duplicateRelation.issueKey));
         continue;
       }
-      const normalizedSummary = normalizedText(action.after.summary);
+      const normalizedSummary = normalizedText(after.summary);
       const duplicateComment = context.comments.find((item) =>
         normalizedSummary.length >= 12 && normalizedText(item.body).includes(normalizedSummary),
       );
@@ -135,7 +140,8 @@ export function applyActionPolicy(
       }
       const duplicateProposal = accepted.find(
         (item): item is Extract<Action, { type: "create_subtask" }> =>
-          item.type === "create_subtask" && similarWork(action.after.summary, item.after.summary),
+          item.type === "create_subtask" &&
+          similarWork(after.summary, (item.after as { summary?: string } | undefined)?.summary ?? ""),
       );
       if (duplicateProposal) {
         rejected.push(rejection(action, "duplicate_proposal", "Equivalent work is already proposed in this plan."));
@@ -144,19 +150,21 @@ export function applyActionPolicy(
     }
 
     if (action.type === "assign_issue") {
-      if (action.before !== undefined) {
-        const actualBefore = context.assignee?.accountId ?? null;
-        const claimedBefore = action.before?.accountId ?? null;
+      const before = action.before as { accountId?: string } | null | undefined;
+      const after = action.after as { accountId?: string } | undefined;
+      if (before !== undefined) {
+        const actualBefore = context.assignee && typeof context.assignee !== "string" ? context.assignee.accountId ?? null : null;
+        const claimedBefore = before?.accountId ?? null;
         if (actualBefore !== claimedBefore) {
           rejected.push(rejection(action, "stale_before_value", "The proposed assignee before-value does not match Jira."));
           continue;
         }
       }
-      if (context.assignee?.accountId === action.after.accountId) {
+      if (typeof context.assignee === "object" && context.assignee && context.assignee.accountId === after?.accountId) {
         rejected.push(rejection(action, "no_change", "The issue already has this assignee."));
         continue;
       }
-      if (context.assignee && !context.assignee.accountId) {
+      if (typeof context.assignee === "object" && context.assignee && !context.assignee.accountId) {
         rejected.push(rejection(action, "incomplete_context", "The current assignee has no stable Jira accountId."));
         continue;
       }
@@ -169,7 +177,7 @@ export function applyActionPolicy(
       }
       const authority = context.assignmentCandidates.find(
         (candidate) =>
-          candidate.user.accountId === action.after.accountId &&
+          candidate.user.accountId === after?.accountId &&
           action.evidenceRefs.includes(assignmentEvidenceId(context.issueKey, candidate)),
       );
       const authorityRef = authority
@@ -202,14 +210,16 @@ export function applyActionPolicy(
     if (
       action.type === "set_priority"
     ) {
+      const before = action.before as string | null | undefined;
+      const after = action.after as string | undefined;
       if (
-        action.before !== undefined &&
-        normalizedText(context.priority) !== normalizedText(action.before)
+        before !== undefined &&
+        normalizedText(context.priority) !== normalizedText(before ?? "")
       ) {
         rejected.push(rejection(action, "stale_before_value", "The proposed priority before-value does not match Jira."));
         continue;
       }
-      if (normalizedText(context.priority) === normalizedText(action.after)) {
+      if (normalizedText(context.priority) === normalizedText(after ?? "")) {
         rejected.push(rejection(action, "no_change", "The issue already has this priority."));
         continue;
       }
@@ -217,18 +227,19 @@ export function applyActionPolicy(
     }
 
     if (action.type === "add_comment") {
+      const after = action.after as { body?: string } | undefined;
       if (context.coverage.comments !== "complete") {
         rejected.push(rejection(action, "incomplete_context", "Cannot exclude a duplicate comment until comments are available."));
         continue;
       }
-      if (context.comments.some((item) => normalizedText(item.body) === normalizedText(action.after.body))) {
+      if (context.comments.some((item) => normalizedText(item.body) === normalizedText(after?.body ?? ""))) {
         rejected.push(rejection(action, "duplicate_comment", "An equivalent comment already exists."));
         continue;
       }
       const duplicateProposal = accepted.find(
         (item): item is Extract<Action, { type: "add_comment" }> =>
           item.type === "add_comment" &&
-          normalizedText(item.after.body) === normalizedText(action.after.body),
+          normalizedText((item.after as { body?: string } | undefined)?.body ?? "") === normalizedText(after?.body ?? ""),
       );
       if (duplicateProposal) {
         rejected.push(rejection(action, "duplicate_proposal", "An equivalent comment is already proposed in this plan."));

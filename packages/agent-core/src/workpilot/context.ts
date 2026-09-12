@@ -19,6 +19,14 @@ export interface WorkUser {
   accountId?: string;
 }
 
+export type Comment = {
+  id: string;
+  author: string | WorkUser;
+  body: string;
+  created?: string;
+  createdAt?: string;
+};
+
 export interface AssignmentCandidate {
   user: WorkUser & { accountId: string };
   source: {
@@ -31,25 +39,31 @@ export interface WorkComment {
   id: string;
   body: string;
   createdAt: string;
-  author?: WorkUser;
+  created?: string;
+  author?: WorkUser | string;
   url?: string;
 }
 
 export interface RelatedIssue {
   issueKey: string;
-  relation: string;
+  relation?: string;
   summary: string;
   status: string;
-  resolved: boolean;
+  resolved?: boolean;
+  linkType?: string;
   url?: string;
 }
 
-export interface WorkSubtask {
+export type Subtask = {
   issueKey: string;
   summary: string;
   status: string;
-  assignee?: WorkUser;
+  assignee?: WorkUser | string;
   url?: string;
+};
+
+export interface WorkSubtask extends Subtask {
+  assignee?: WorkUser | string;
 }
 
 export interface IssueSnapshot {
@@ -58,10 +72,11 @@ export interface IssueSnapshot {
   description?: string;
   status: string;
   priority: string;
-  assignee?: WorkUser;
-  assignmentCandidates: AssignmentCandidate[];
+  assignee?: WorkUser | string;
+  assignmentCandidates?: AssignmentCandidate[];
   existingSubtasks: WorkSubtask[];
   snapshotVersion: string;
+  snapshotHash?: string;
   updatedAt?: string;
   url?: string;
 }
@@ -80,7 +95,8 @@ export interface WorkContext extends IssueSnapshot {
   comments: WorkComment[];
   relatedIssues: RelatedIssue[];
   fetchedAt: string;
-  coverage: WorkContextCoverage;
+  coverage?: WorkContextCoverage;
+  assignmentCandidates?: AssignmentCandidate[];
 }
 
 export const WORKPILOT_CONTEXT_DESCRIPTION =

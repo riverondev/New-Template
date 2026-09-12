@@ -822,22 +822,22 @@ Integración real y segura con Jira.
 
 ### Tareas
 
--   [ ] Cliente Jira.
--   [ ] Lectura de issues.
--   [ ] Lectura de comentarios.
--   [ ] Relaciones.
--   [ ] Subtasks.
--   [ ] Validación de campos.
--   [ ] ActionPlan persistido.
--   [ ] Approval gate.
--   [ ] Escrituras Jira.
--   [ ] Read-back.
--   [ ] Idempotencia.
--   [ ] Snapshot validation.
--   [ ] Concurrencia.
--   [ ] Registro de ejecución.
--   [ ] Recuperación.
--   [ ] Manejo de timeout.
+-   [x] Cliente Jira.
+-   [x] Lectura de issues.
+-   [x] Lectura de comentarios.
+-   [x] Relaciones.
+-   [x] Subtasks.
+-   [x] Validación de campos.
+-   [x] ActionPlan persistido.
+-   [x] Approval gate.
+-   [x] Escrituras Jira.
+-   [x] Read-back.
+-   [x] Idempotencia.
+-   [x] Snapshot validation.
+-   [x] Concurrencia.
+-   [x] Registro de ejecución.
+-   [x] Recuperación.
+-   [x] Manejo de timeout.
 
 ### Entregable
 
