@@ -19,6 +19,7 @@ function withEnv(config: NodeJS.ProcessEnv, callback: () => void) {
     "OPENROUTER_API_KEY",
     "ANTHROPIC_API_KEY",
     "GOOGLE_API_KEY",
+    "OLLAMA_BASE_URL",
   ]) {
     delete process.env[key];
   }
@@ -33,6 +34,45 @@ function resolvedChatModel() {
   }
   return { modelId: model.modelId, provider: model.provider };
 }
+
+test("Ollama preserves local tags and needs no cloud API key", () => {
+  withEnv({ MODEL_PROVIDER: "ollama", MODEL: "workpilot-qwen3:4b" }, () => {
+    assert.deepEqual(resolvedChatModel(), { modelId: "workpilot-qwen3:4b", provider: "openai.chat" });
+  });
+});
+
+test("Ollama rejects remote endpoints and cloud model aliases", () => {
+  for (const base of ["https://api.openai.com/v1", "http://remote.example/v1", "http://user:password@localhost:11434/v1", "http://localhost:11434/api"]) {
+    withEnv({ MODEL_PROVIDER: "ollama", OLLAMA_BASE_URL: base }, () => assert.throws(resolveModel, /local HTTP/));
+  }
+  withEnv({ MODEL_PROVIDER: "ollama", MODEL: "qwen:cloud" }, () => assert.throws(resolveModel, /local Ollama/));
+});
+
+test("Ollama sends tool calls to loopback without forwarding OpenAI credentials", async () => {
+  process.env.MODEL_PROVIDER = "ollama";
+  process.env.MODEL = "qwen3:4b";
+  process.env.OLLAMA_BASE_URL = "http://127.0.0.1:11434/v1";
+  process.env.OPENAI_API_KEY = "private-cloud-key";
+  const original = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    assert.equal(String(url), "http://127.0.0.1:11434/v1/chat/completions");
+    assert.equal(new Headers(init?.headers).get("authorization"), "Bearer ollama");
+    const body = JSON.parse(String(init?.body));
+    assert.equal(body.reasoning_effort, "none");
+    assert.equal(body.tools[0].function.name, "read_ticket");
+    return Response.json({ id: "local-test", created: 1, model: "qwen3:4b", choices: [{ index: 0,
+      message: { role: "assistant", content: null, tool_calls: [{ id: "call1", type: "function",
+        function: { name: "read_ticket", arguments: '{"issueKey":"WH-1"}' } }] }, finish_reason: "tool_calls" }] });
+  };
+  try {
+    const model = resolveModel();
+    assert.notEqual(typeof model, "string");
+    if (typeof model === "string") throw new Error("Expected local model");
+    const result = await model.doGenerate({ prompt: [{ role: "user", content: [{ type: "text", text: "Read WH-1" }] }],
+      tools: [{ type: "function", name: "read_ticket", inputSchema: { type: "object", properties: { issueKey: { type: "string" } }, required: ["issueKey"] } }] });
+    assert.ok(result.content.some(c => c.type === "tool-call" && c.toolName === "read_ticket"));
+  } finally { globalThis.fetch = original; }
+});
 
 test("explicit OpenAI wins over a configured OpenRouter key", () => {
   withEnv({

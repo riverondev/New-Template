@@ -13,20 +13,21 @@ export function WorkpilotPanel({ plan, result, slack, busy, approve, reject, ret
 
   return <aside className="wp-panel">
     <p className="wp-eyebrow">WORKPILOT · PROPUESTA</p>
-    {!plan ? <p>No hay propuesta guardada. La generación del agente está pendiente de P1.</p> : <>
+    {!plan ? <p>Pedile al agente que prepare una propuesta para este ticket.</p> : <>
       <h2>Revisión de {plan.issueKey}</h2>
       <p>Plan v{plan.version} · {plan.status}</p>
       <h3>Hallazgos</h3>{plan.findings.map(renderTextEntry)}
       <h3>Hipótesis</h3>{plan.hypotheses.length ? plan.hypotheses.map(renderTextEntry) : <p>Ninguna registrada.</p>}
       <h3>Información faltante</h3>{plan.missingInfo.length ? plan.missingInfo.map((item, index) => renderTextEntry(item, index)) : <p>Ninguna registrada.</p>}
-      <h3>Evidencia referenciada</h3>{[...new Set(plan.actions.flatMap(a => a.evidenceRefs))].map(s => <EvidenceCard key={s} text={s} />)}
+      <h3>Evidencia referenciada</h3>{plan.evidence.filter(e => [...plan.actions, ...plan.findings, ...plan.hypotheses, ...plan.missingInfo].some(item => item.evidenceRefs.includes(e.evidenceId))).map(e => <div key={e.evidenceId}><small>{e.sourceType} · {e.issueKey}{e.commentId ? " · " + e.commentId : ""}</small><EvidenceCard text={e.excerpt} /></div>)}
       <ActionPlan actions={plan.actions.map(a => a.type + ": " + JSON.stringify(a.after))} />
       {plan.actions.map(a => <details key={a.actionId}><summary>Antes / Después · {a.actionId}</summary>
         <pre>{JSON.stringify({ before: (a as { before?: unknown }).before ?? null, after: a.after }, null, 2)}</pre></details>)}
       <h3>Aviso privado de Slack</h3>
       <p>Destino fijo configurado en el servidor. Se enviará después del read-back de Jira.</p>
       <blockquote>{plan.slackDraft?.text || "Sin aviso."}</blockquote>
-      {plan.status === "pending" && <div className="wp-buttons">
+      {!plan.actions.length && <p>Este análisis no propone cambios. No necesita aprobación ni envía Slack.</p>}
+      {plan.status === "pending" && plan.actions.length > 0 && <div className="wp-buttons">
         <button disabled={busy} onClick={reject}>Rechazar</button>
         <button disabled={busy} onClick={approve}>{busy ? "Procesando…" : "Aprobar cambios y aviso"}</button>
       </div>}
@@ -36,7 +37,7 @@ export function WorkpilotPanel({ plan, result, slack, busy, approve, reject, ret
         {result.actions.map(a => <p key={a.actionId}>{a.actionId}: {a.status}
           {a.providerId && <> · ID: <code>{a.providerId}</code></>}{a.error && <> · {a.error}</>}</p>)}
         <p>Slack: {slack?.status || result.slackStatus}</p>
-        {result.actions.every(a => a.status === "succeeded") && result.slackStatus !== "sent" &&
+        {result.actions.every(a => a.status === "succeeded") && result.slackStatus !== "sent" && result.slackStatus !== "skipped" &&
           <p>Jira actualizado; aviso de Slack pendiente.</p>}
         {slack?.status === "succeeded" && <p>ID Slack: <code>{slack.providerId}</code></p>}
         {slack && "error" in slack && <p>{slack.error.message}</p>}

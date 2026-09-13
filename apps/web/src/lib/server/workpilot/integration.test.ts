@@ -15,6 +15,7 @@ import type { ActionPlan } from "agent-core/workpilot/action-plan";
 const directory = mkdtempSync(join(tmpdir(), "workpilot-integration-"));
 process.env.WORKPILOT_DATA_DIR = directory;
 process.env.WORKPILOT_DEMO = "true";
+process.env.JIRA_PROJECT_KEY = "WP";
 after(() => rmSync(directory, { recursive: true, force: true }));
 let session = "";
 async function call(resource: string, body?: unknown, cookie = session, origin = "http://localhost:3100") {

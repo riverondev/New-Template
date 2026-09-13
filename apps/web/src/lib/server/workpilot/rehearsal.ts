@@ -15,7 +15,20 @@ type Fixture = { key: string; fields: {
 function fixture(key: string): Fixture {
   const saved = readRecord<Fixture>("fixture-jira", key);
   if (saved) return saved;
-  if (!["WP-42", "WP-57"].includes(key)) throw new Error("FIXTURE_NOT_FOUND");
+  if (!["WP-42", "WP-57", "WH-1"].includes(key)) throw new Error("FIXTURE_NOT_FOUND");
+  if (key === "WH-1") return { key, fields: {
+    summary: "WorkPilot Hackathon Padre",
+    status: { name: "En curso" }, priority: { name: "Medium" },
+    assignee: null, updated: "2026-09-12T16:47:23.878-0300",
+    description: "Historia padre del proyecto WH para prueba de handoff con WorkPilot.",
+    subtasks: [
+      { key: "WH-2", fields: { summary: "Hijo 1", status: { name: "En curso" } } },
+      { key: "WH-3", fields: { summary: "Hijo 2", status: { name: "Por hacer" } } },
+    ],
+    issuelinks: [],
+  }, comments: [{ id: "wh1-c1", author: { displayName: "Demo" },
+    body: "Subtareas WH-2 (en curso) y WH-3 (por hacer). Falta definir responsable del handoff.",
+    created: "2026-09-12T16:47:00.000Z" }] };
   const blocked = key === "WP-42";
   return { key, fields: {
     summary: blocked ? "Validación de checkout bloqueada" : "Revisión de accesibilidad lista para QA",
@@ -82,7 +95,10 @@ export const rehearsalSlack: SlackClient = {
 export function rehearsalPlan(context: WorkContext): ActionPlan {
   if (process.env.WORKPILOT_DEMO !== "true") throw new Error("REHEARSAL_DISABLED");
   const blocked = context.issueKey === "WP-42";
-  const body = blocked ? "Ensayo: fix en staging. Falta documentar el caso de prueba y resolver WP-39." :
+  const isWH1 = context.issueKey === "WH-1";
+  const body = isWH1
+    ? "Ensayo WH-1: historia padre con WH-2 (en curso) y WH-3 (por hacer). Falta asignar responsable del handoff."
+    : blocked ? "Ensayo: fix en staging. Falta documentar el caso de prueba y resolver WP-39." :
     "Ensayo: accesibilidad lista para QA. Dependencias cerradas; revisar handoff.";
   const alreadyCreated = context.existingSubtasks.some(s => s.summary === "Documentar caso de prueba QA");
   const commentId = context.comments[0]?.id ?? "fixture-comment";
@@ -104,6 +120,8 @@ export function rehearsalPlan(context: WorkContext): ActionPlan {
           { missingInfoId: "m1", text: "Caso de prueba QA", blocking: true, evidenceRefs: [evidenceId] },
           { missingInfoId: "m2", text: "Resolver WP-39", blocking: false, evidenceRefs: [issueEvidenceId] },
         ]
+      : isWH1
+      ? [{ missingInfoId: "m1", text: "Responsable del handoff no definido en Jira", blocking: true, evidenceRefs: [issueEvidenceId] }]
       : [],
     actions: [
       { actionId: "handoff", type: "add_comment",

@@ -10,6 +10,9 @@ import { executeApproval, getApprovalResult } from "./executor";
 import { getDelivery, deliverSlack } from "../slack/delivery";
 import { withPlanLock } from "./idempotency";
 import { rehearsalPlan } from "./rehearsal";
+import { readAgentEvidence, prepareAgentProposal } from "./agent-proposal";
+import { proposalSchema } from "agent-core/workpilot/proposal-schema";
+import { ContractValidationError } from "agent-core/workpilot";
 
 const cookieName = "workpilot-session";
 function owner(planId: string, session: string) {
@@ -45,13 +48,21 @@ export async function handleWorkpilot(request: Request, resource: string): Promi
   try {
     if (request.method === "GET") {
       if (resource === "session") return reply({ mode: process.env.WORKPILOT_DEMO === "true" ? "rehearsal" : "live",
-        agentStatus: "pending_p1", writesEnabled: process.env.WORKPILOT_DEMO === "true" || process.env.JIRA_WRITES_ENABLED === "true" });
+        agentStatus: "connected", writesEnabled: process.env.WORKPILOT_DEMO === "true" || process.env.JIRA_WRITES_ENABLED === "true" });
       const planId = url.searchParams.get("planId");
       if (resource === "plans" && planId) {
         const plan = owner(planId, session);
         return reply({ plan, result: getApprovalResult(plan), slack: getDelivery(plan.planId, plan.version) });
       }
       const issueKey = url.searchParams.get("issueKey") || "";
+      if (resource === "agent-context") {
+        const context = await readContext(issueKey);
+        const plan = getAllPlansForIssue(issueKey).filter(p => readRecord<string>("owners", p.planId) === session)
+          .sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""))[0];
+        return reply({ ...readAgentEvidence(context), mode: process.env.WORKPILOT_DEMO === "true" ? "rehearsal" : "live",
+          plan: plan ?? null, execution: plan ? getApprovalResult(plan) : null,
+          slack: plan ? getDelivery(plan.planId, plan.version) : null });
+      }
       if (resource === "context") {
         const context = await readContext(issueKey);
         return reply({ context });
@@ -67,6 +78,17 @@ export async function handleWorkpilot(request: Request, resource: string): Promi
     const rawText = await request.text();
     if (rawText.length > 64_000) return reply({ error: "PAYLOAD_TOO_LARGE" }, 413);
     const raw = JSON.parse(rawText);
+    if (resource === "propose") {
+      const input = proposalSchema.parse(raw);
+      return await withPlanLock("issue:" + input.issueKey, async () => {
+        if (getAllPlansForIssue(input.issueKey).some(p => p.status === "approved" ||
+          getApprovalResult(p)?.actions.some(a => a.status === "reconciling"))) throw new Error("RECONCILIATION_REQUIRED");
+        const prepared = prepareAgentProposal(input, await readContext(input.issueKey));
+        writeRecord("owners", prepared.plan.planId, session);
+        storePlan(prepared.plan);
+        return reply(prepared, 201);
+      });
+    }
     if (resource === "plans" || resource === "rehearsal") {
       if (resource === "rehearsal" && process.env.WORKPILOT_DEMO !== "true") throw new Error("REHEARSAL_DISABLED");
       const draft = resource === "rehearsal"
@@ -100,6 +122,7 @@ export async function handleWorkpilot(request: Request, resource: string): Promi
     }
     return reply({ error: "NOT_FOUND" }, 404);
   } catch (error) {
+    if (error instanceof ContractValidationError) return reply({ error: "INVALID_PROPOSAL", issues: error.issues }, 400);
     if (error instanceof z.ZodError || error instanceof SyntaxError) return reply({ error: "INVALID_INPUT" }, 400);
     const message = error instanceof Error ? error.message : "";
     const controlled = /^(PLAN_[A-Z_]+|SNAPSHOT_CHANGED|DESTINATION_NOT_ALLOWED|DUPLICATE_ACTION_ID|WRITES_DISABLED|SUBTASK_TYPE_NOT_CONFIGURED|JIRA_NOT_VERIFIED|RECIPIENT_CHANGED|RETRY_TOO_EARLY|REHEARSAL_DISABLED|RECONCILIATION_REQUIRED|CONCURRENT_EXECUTION)$/;

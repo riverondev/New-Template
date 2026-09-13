@@ -235,20 +235,20 @@ function parseRelatedIssue(
   const summary = nonEmptyString(value.summary, `${path}.summary`, issues);
   const status = nonEmptyString(value.status, `${path}.status`, issues);
   const url = optionalHttpUrl(value.url, `${path}.url`, issues);
-  if (typeof value.resolved !== "boolean") {
+  if (value.resolved !== undefined && typeof value.resolved !== "boolean") {
     issues.push({
       code: value.resolved === undefined ? "missing_value" : "invalid_type",
       path: `${path}.resolved`,
       message: "expected a boolean",
     });
   }
-  return parsedKey && relation && summary && status && typeof value.resolved === "boolean"
+  return parsedKey && relation && summary && status && (value.resolved === undefined || typeof value.resolved === "boolean")
     ? {
         issueKey: parsedKey,
         relation,
         summary,
         status,
-        resolved: value.resolved,
+        ...(typeof value.resolved === "boolean" ? { resolved: value.resolved } : {}),
         ...(url ? { url } : {}),
       }
     : undefined;

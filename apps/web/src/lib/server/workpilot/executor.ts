@@ -43,9 +43,9 @@ export async function verifyWrite(action: Action, issueKey: string, providerId?:
     case "create_subtask": {
       if (!providerId) return false;
       const issue = await getIssue(providerId);
-      return issue.issueKey === providerId && issue.summary === action.after.summary;
+      return issue.issueKey === providerId && issue.parentKey === issueKey && issue.summary === action.after.summary;
     }
-    case "assign_issue": return (await getIssue(issueKey)).assignee === action.after.accountId;
+    case "assign_issue": return (await getIssue(issueKey)).assigneeAccountId === action.after.accountId;
     case "set_priority": return (await getIssue(issueKey)).priority === action.after;
     default: return false;
   }
@@ -118,6 +118,7 @@ export async function executeApproval(request: ApprovalRequest): Promise<Integra
     const valid = validatePlan(plan.planId, request.version, current.snapshotHash);
     if (!valid.ok) throw new Error(valid.reason);
     validateDraft(plan);
+    if (!plan.actions.length) throw new Error("PLAN_NO_ACTIONS");
     if (request.dryRun) return { planId: plan.planId, issueKey: plan.issueKey, dryRun: true,
       actions: plan.actions.map(a => ({ actionId: a.actionId, status: "skipped" as const })), slackStatus: "skipped" } as IntegrationResult;
     if (!loadEnv().writesEnabled) throw new Error("WRITES_DISABLED");

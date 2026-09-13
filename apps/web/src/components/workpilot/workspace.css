@@ -21,3 +21,8 @@
 .wp-error { background:#fff0ee; color:#842b23; border:1px solid #dcaaa4; padding:12px; border-radius:8px }
 @media(max-width:1050px) { .wp-layout { grid-template-columns:180px 1fr } .wp-panel { grid-column:1/-1 } }
 @media(max-width:650px) { .wp-workspace { padding:16px } .wp-layout { grid-template-columns:1fr } }
+
+.wp-chat { max-width:1454px; margin:20px auto; }
+.wp-chat-messages { max-height:420px; overflow:auto; }
+.wp-chat-messages p { white-space:pre-wrap; }
+.wp-chat textarea { display:block; width:100%; min-height:80px; box-sizing:border-box; margin:10px 0; padding:12px; border:1px solid #bdc7d9; border-radius:8px; font:inherit; }

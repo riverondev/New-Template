@@ -52,7 +52,7 @@ export const planSchema = z.object({
   findings: z.array(reasoningStatement).max(50),
   hypotheses: z.array(reasoningStatement).max(50),
   missingInfo: z.array(missingInfo).max(50),
-  actions: z.array(action).min(1).max(10),
+  actions: z.array(action).max(10),
   // Legacy P3 channel is accepted for compatibility, but NEVER used as destination.
   slackDraft: z.object({ channel: z.string().optional().default(""), text: z.string().max(4000) }).strict().optional(),
   expiresAt: z.iso.datetime(), createdAt: z.iso.datetime(), status: z.literal("pending"),

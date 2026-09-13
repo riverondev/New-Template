@@ -1,7 +1,8 @@
 import { existsSync, readFileSync, mkdirSync, accessSync, constants } from "node:fs";
 import { resolve } from "node:path";
 const root = resolve(import.meta.dirname, "..");
-const demo = process.env.WORKPILOT_DEMO === "true";
+const hasLiveJiraConfig = Boolean(process.env.JIRA_BASE_URL || process.env.JIRA_EMAIL || process.env.JIRA_API_TOKEN || process.env.JIRA_PROJECT_KEY);
+const demo = process.env.WORKPILOT_DEMO === "true" || !hasLiveJiraConfig;
 const checks = [];
 function check(name, ok, detail) { checks.push({ name, ok, detail }); }
 check("Node >=22", Number(process.versions.node.split(".")[0]) >= 22, process.versions.node);

@@ -22,7 +22,14 @@ export type AppEnv = {
 let _cached: AppEnv | null = null
 
 export function loadEnv(): AppEnv {
-  if (process.env.WORKPILOT_DEMO === "true") return {
+  const hasRealJiraConfig = Boolean(
+    process.env.JIRA_BASE_URL ||
+    process.env.JIRA_EMAIL ||
+    process.env.JIRA_API_TOKEN ||
+    process.env.JIRA_PROJECT_KEY,
+  )
+
+  if (process.env.WORKPILOT_DEMO === "true" || !hasRealJiraConfig) return {
     jira: { baseUrl: "https://rehearsal.invalid", email: "", apiToken: "", projectKey: "WP" },
     planTtlMinutes: 30, writesEnabled: true,
   }

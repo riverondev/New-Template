@@ -1,34 +1,32 @@
 # WorkPilot
 
-Workspace web para revisar tickets de Jira, aprobar acciones y comunicar el resultado por Slack. Conserva Web + Agent Core del starter. P4 conecta la UI de P2 con el executor de P3; el razonamiento y la generación de planes de P1 siguen pendientes.
+Workspace web para preparar el handoff de un ticket Jira con IA. El agente recibe el ticket seleccionado, relee Jira, separa hechos/hipótesis/faltantes y prepara una propuesta con evidencia. El usuario revisa y aprueba; el servidor verifica cada cambio en Jira antes de enviar el aviso privado de Slack.
 
-## Quickstart
+## Inicio
 
-Requiere Node.js 22+ y npm. Desde un checkout de esta rama:
+Requiere Node.js 22+.
 
 ```sh
 npm ci
 npm run dev:rehearsal
 ```
 
-Abrí http://127.0.0.1:3100. Seleccioná WP-42, pulsá **Cargar propuesta de ensayo**, revisá las acciones y el texto Slack y aprobá. Actualizá la página para recuperar los resultados. Probá WP-57 y Rechazar.
+Abrí http://127.0.0.1:3100. El ensayo usa Jira y Slack simulados y aislados en disco. **Cargar propuesta de ensayo** funciona sin modelo; el chat requiere un proveedor configurado.
 
-El ensayo usa proveedores locales simulados y planes deterministas, identificados en pantalla. No usa IA ni credenciales y no contacta Jira/Slack. El estado queda en `apps/web/.data/workpilot/rehearsal`. Para otro ensayo independiente podés configurar un nuevo `WORKPILOT_DATA_DIR`; no borres registros de ejecuciones reales.
+Para usar OpenAI, copiá `.env.example` a `.env` si todavía no existe y completá `MODEL_PROVIDER=openai`, `OPENAI_API_KEY` y `MODEL` con un modelo habilitado para tu cuenta que soporte herramientas. No reemplaces un `.env` existente ni publiques credenciales. El comando de ensayo carga ese archivo y fuerza proveedores Jira/Slack simulados.
+
+1. Seleccioná WP-42 y pulsá **Preparar propuesta**.
+2. Revisá evidencia, acciones y borrador Slack. Solo el botón **Aprobar cambios y aviso** ejecuta.
+3. Actualizá la página: el plan y los resultados se recuperan del disco.
+4. Pulsá **¿Qué falta?**: el agente relee Jira y los resultados persistidos.
+5. Repetí con WP-57 y probá **Rechazar**.
+
+Los análisis sin acciones se muestran sin botón de aprobación. El chat no se persiste al recargar; planes y ejecuciones sí.
 
 ## Jira y Slack reales
 
-Copiá `.env.example` a `.env`. Configurá:
-
-- `WORKPILOT_DEMO=false`.
-- `JIRA_BASE_URL`: origen HTTPS de Jira Cloud.
-- `JIRA_EMAIL`, `JIRA_API_TOKEN`, `JIRA_PROJECT_KEY`.
-- `JIRA_SUBTASK_ISSUE_TYPE_ID`: ID real de un tipo de subtarea habilitado en ese proyecto.
-- `JIRA_WRITES_ENABLED=true` únicamente para habilitar las escrituras aprobadas.
-- `SLACK_BOT_TOKEN` y `SLACK_RECIPIENT_USER_ID`: usuario fijo de App Home.
-- `WORKPILOT_DATA_DIR`: directorio persistente absoluto recomendado.
-- Variables de modelo para la futura integración P1. No se utiliza el modelo durante el ensayo.
-
-La cuenta Jira necesita lectura del proyecto, comentarios, asignación, edición y creación de subtareas según las acciones propuestas. Slack requiere `chat:write` y la pestaña Messages de App Home habilitada en modo solo lectura; ver [contrato Slack](docs/SLACK-CONTRACT.md).
+Configurá `WORKPILOT_DEMO=false`, `JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN`, `JIRA_PROJECT_KEY`, `JIRA_SUBTASK_ISSUE_TYPE_ID`, `SLACK_BOT_TOKEN` y `SLACK_RECIPIENT_USER_ID`.
+Habilitá `JIRA_WRITES_ENABLED=true` para permitir acciones aprobadas. Recomendamos un `WORKPILOT_DATA_DIR` absoluto persistente.
 
 ```sh
 npm run preflight
@@ -36,11 +34,9 @@ npm run preflight -- --live
 npm run dev:web
 ```
 
-El preflight normal comprueba configuración y disco. `--live` solo consulta identidad/proyecto Jira y autenticación Slack; no escribe ni envía avisos. No comprueba razonamiento P1 ni reemplaza una demo real.
+El preflight live solo consulta identidad/proyecto Jira y autenticación Slack; no invoca el modelo ni escribe. Slack usa el usuario fijo de App Home: ver [contrato](docs/SLACK-CONTRACT.md).
 
-La UI real lee el ticket seleccionado. P1 debe producir y guardar un ActionPlan con el contrato de [integración](docs/P4-HANDOFF.md); hasta entonces no hay chat WorkPilot ni generación automática. No se presenta el agente de incidentes heredado como WorkPilot.
-
-## QA y build
+## Verificación
 
 ```sh
 npm run verify
@@ -48,22 +44,23 @@ npm run build --workspace web
 npm run test:e2e
 ```
 
-`verify` hace typecheck y tests unitarios/de integración. `test:e2e` arranca el build Next en 127.0.0.1:3197 y comprueba las rutas HTTP, aprobación, efectos simulados, doble envío, rechazo y reinicio del servidor. Requiere el build previo; no necesita Playwright. No sustituye QA visual ni integración real.
+Las pruebas locales usan proveedores simulados. La suite de propuestas atraviesa el contrato del agente, políticas del servidor, persistencia, aprobación, read-back y seguimiento. La suite HTTP arranca el servidor Next de producción. Ninguna certifica por sí sola la calidad de una respuesta real del modelo.
 
-Estado de la revisión actual: TypeScript y build web completados (exit 0); tests intentados pero bloqueados al iniciar tsx por `uv_os_get_passwd ENOMEM` en el sandbox de Windows. No se certifican tests/E2E ni clean clone. Ver [estado P4](docs/feature-matrix/p4-integration-slack-qa-release.md).
+## Límites
 
-## Límites operativos
+MVP local de un operador, vinculado a loopback, con sesiones y controles de Origin. No desplegar públicamente sin agregar autenticación/autorización.
 
-El MVP es local, de un operador, vinculado a loopback. Usa cookie HttpOnly y SameSite, control de Origin, sesiones persistidas y propiedad de planes. No es autenticación multiusuario para desplegar públicamente.
-
-Jira se escribe solo al aprobar un plan inmutable. Cada acción se lee de nuevo; un fallo detiene las restantes. Slack solo se envía después de verificar todas las acciones y nunca toma el destinatario del plan. Reintentar Slack no escribe en Jira. Los resultados inciertos no se reenvían.
-
-Los registros y locks se persisten en disco. Un cierre abrupto deja el intento bloqueado: inspeccionar el resultado externo antes de desbloquear; no hay recuperación destructiva ni reintento automático. La sesión dura 24 h; conservar el perfil del navegador durante el ensayo.
+- El modelo solo dispone de lectura y propuesta; nunca de aprobación, Jira writes o envío Slack.
+- IDs, tiempos, snapshot, payloads y evidencia del plan se construyen en el servidor.
+- Las políticas eliminan acciones sin evidencia, duplicadas o con responsables inventados.
+- El adaptador no inventa candidatos de asignación: si Jira no establece un responsable autorizado, se informa el faltante.
+- Si una política elimina acciones, se descarta el borrador Slack para no anunciar cambios descartados.
+- Jira falla de forma cerrada ante una lectura incompleta. Los comentarios se paginan.
+- Resultados inciertos requieren inspección manual; no se repiten escrituras ni se reintenta Slack automáticamente.
+- La relevancia semántica de las propuestas y la resistencia a instrucciones maliciosas requieren evaluación con el modelo real.
 
 ## Entrega
 
-[Guion y runbook de demo](docs/P4-DEMO.md) · [Submission preparada](SUBMISSION.md) · [Handoff a P1](docs/P4-HANDOFF.md).
+[Flujo IA y validación](docs/AI-FLOW.md) · [Submission](SUBMISSION.md) · [Origen del starter](docs/STARTER-REVIEW.md).
 
-El video final, la prueba con servicios reales, la respuesta «¿qué falta?» y la publicación/submission externa siguen pendientes. No se han enviado mensajes reales ni publicado artefactos.
-
-Starter incorporado: ver [revisión del starter](docs/STARTER-REVIEW.md). La autoría y fechas de construcción durante el evento deben ser confirmadas por el equipo.
+Los documentos P1/P4 anteriores son cortes históricos. El flujo actual se describe aquí y en AI-FLOW.md. La prueba con servicios reales, video y publicación siguen pendientes.

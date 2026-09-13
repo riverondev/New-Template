@@ -18,7 +18,7 @@ type RawCommentsResponse = {
   total: number
 }
 
-function extractText(body: unknown): string {
+export function extractText(body: unknown): string {
   if (typeof body === "string") return body
   // ADF: { type: "doc", content: [...] } — extract plain text recursively
   if (typeof body === "object" && body !== null) {
@@ -43,7 +43,19 @@ export async function getIssueComments(
     `/issue/${issueKey}/comment?maxResults=100&orderBy=created`
   )
 
-  return raw.comments.map((c) => ({
+  const comments = [...raw.comments];
+  const seen = new Set(comments.map(c => c.id));
+  if (comments.length === 0 && raw.total > 0) throw new Error("INCOMPLETE_COMMENTS");
+  while (comments.length < raw.total) {
+    if (comments.length >= 10000) throw new Error("INCOMPLETE_COMMENTS");
+    const page = await client.get<RawCommentsResponse>(
+      `/issue/${issueKey}/comment?maxResults=100&orderBy=created&startAt=${comments.length}`
+    );
+    if (!page.comments.length || page.comments.some(c => seen.has(c.id))) throw new Error("INCOMPLETE_COMMENTS");
+    page.comments.forEach(c => seen.add(c.id));
+    comments.push(...page.comments);
+  }
+  return comments.map((c) => ({
     id: c.id,
     author: c.author.displayName,
     body: extractText(c.body),

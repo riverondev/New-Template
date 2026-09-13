@@ -8,6 +8,29 @@ function canonicalProvider(provider: string) {
 }
 
 export function resolveModel() {
+  // Resolve local names before cloud prefixes: qwen3:4b is an Ollama tag.
+  if (canonicalProvider(process.env.MODEL_PROVIDER || "") === "ollama") {
+    const model = (process.env.MODEL ?? "qwen3:4b").trim();
+    if (!model || /(?:[:/-])cloud$/i.test(model)) throw new Error("MODEL must name a local Ollama model.");
+    const base = new URL(process.env.OLLAMA_BASE_URL || "http://127.0.0.1:11434/v1");
+    if (base.protocol !== "http:" || !["localhost", "127.0.0.1", "[::1]"].includes(base.hostname) ||
+        base.username || base.password || base.search || base.hash || !/^\/v1\/?$/.test(base.pathname)) {
+      throw new Error("OLLAMA_BASE_URL must be a local HTTP /v1 endpoint.");
+    }
+    return createOpenAI({
+      baseURL: base.toString().replace(/\/$/, ""),
+      apiKey: "ollama", // Local placeholder; never forwards cloud credentials.
+      fetch: async (url, init) => {
+        const body = JSON.parse(String(init?.body || "{}"));
+        return globalThis.fetch(url, {
+          ...init,
+          body: JSON.stringify({ ...body, reasoning_effort: "none", temperature: 0.1,
+            max_tokens: body.max_tokens ?? 1536 }),
+          signal: init?.signal ? AbortSignal.any([init.signal, AbortSignal.timeout(300_000)]) : AbortSignal.timeout(300_000),
+        });
+      },
+    }).chat(model);
+  }
   const model = (process.env.MODEL || DEFAULT_MODEL).trim();
   const firstSeparator = model.search(/[:/]/);
   const candidatePrefix = firstSeparator >= 0 ? canonicalProvider(model.slice(0, firstSeparator)) : undefined;
@@ -32,7 +55,7 @@ export function resolveModel() {
   };
   const keyName = Object.hasOwn(keyNames, provider) ? keyNames[provider] : undefined;
   if (!keyName) {
-    throw new Error(`Unsupported model provider '${provider}'. Set MODEL_PROVIDER to openai, openrouter, anthropic, or google.`);
+    throw new Error(`Unsupported model provider '${provider}'. Set MODEL_PROVIDER to openai, openrouter, anthropic, google, or ollama.`);
   }
   if (provider !== "openrouter" && prefix && prefix !== provider) {
     throw new Error(`MODEL provider '${prefix}' does not match MODEL_PROVIDER '${provider}'.`);

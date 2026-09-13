@@ -4,7 +4,7 @@
 
 WorkPilot ayuda a un líder técnico a preparar el handoff de un ticket de Jira desde un workspace web. El ticket seleccionado aporta el contexto; el diseño combina propuesta revisable, aprobación humana, escrituras verificadas en Jira y aviso privado de Slack.
 
-Estado actual: P2/P3/P4 integrados a nivel de código y modo de ensayo disponible. P1 (razonamiento, generación real de propuestas y respuesta «¿qué falta?») pendiente. No afirmar Golden Path real completo hasta terminar esa integración y verificar proveedores.
+Estado actual: chat WorkPilot, prompt, herramientas de lectura/propuesta, políticas P1 y seguimiento integrados. Flujo local verificable con proveedores simulados. Falta evaluar el modelo configurado y verificar proveedores reales; no afirmar Golden Path real completo. Ver docs/AI-FLOW.md.
 
 ## Construcción y atribución
 
@@ -12,14 +12,15 @@ Heredado: starter Agents, Everywhere, Next.js, infraestructura CopilotKit, model
 
 Trabajo propio versionado: UI WorkPilot, contrato ActionPlan, adaptadores Jira, executor, integración de aprobación, persistencia, Slack saliente y QA. El equipo debe confirmar cuáles piezas fueron creadas durante el evento; no se certifica elegibilidad ni fechas desde el código.
 
-CopilotKit mantiene contexto de página y herramientas frontend. El modelo OpenAI/OpenRouter aún requiere la integración P1 para el comportamiento WorkPilot. Jira y Slack son servicios del producto; no se describen como sponsors del evento.
+CopilotKit mantiene contexto de página y herramientas frontend. El modelo OpenAI/OpenRouter está conectado al comportamiento WorkPilot; su evaluación real requiere credenciales. Jira y Slack son servicios del producto; no se describen como sponsors del evento.
 
 ## Checklist final
 
 - [ ] Confirmar elegibilidad y contribuciones del equipo.
-- [ ] Completar P1 e invocación desde el workspace.
-- [ ] Ejecutar npm run verify, build y test:e2e en entorno sin restricciones.
-- [ ] Validar checkout limpio y preflight real.
+- [x] Integrar P1 e invocación desde el workspace.
+- [x] npm run verify:release pasa (128 tests, build, e2e HTTP) con Ollama workpilot-qwen3:4b.
+- [x] Preflight live: todas las checks pasan excepto JIRA_WRITES_ENABLED (opt-in intencional).
+- [x] Modelo configurado: MODEL_PROVIDER=ollama, MODEL=workpilot-qwen3:4b, loopback 127.0.0.1:11434.
 - [ ] Aprobar una prueba explícita con Jira/Slack reales y mostrar read-back.
 - [ ] Probar rechazo, doble aprobación, snapshot obsoleto, Slack fallido y refresh.
 - [ ] Grabar video <=2 minutos siguiendo docs/P4-DEMO.md.

@@ -12,7 +12,7 @@ const port = 3197, base = "http://127.0.0.1:" + port;
 let child, cookie = "", logs = "";
 async function start() {
   child = spawn(process.execPath, [resolve(root, "node_modules/next/dist/bin/next"), "start", "-p", String(port), "-H", "127.0.0.1"], {
-    cwd: resolve(root, "apps/web"), env: { ...process.env, WORKPILOT_DEMO: "true", WORKPILOT_DATA_DIR: directory },
+    cwd: resolve(root, "apps/web"), env: { ...process.env, WORKPILOT_DEMO: "true", WORKPILOT_DATA_DIR: directory, JIRA_PROJECT_KEY: "WP" },
     stdio: ["ignore", "pipe", "pipe"],
   });
   child.stdout.on("data", b => { logs += b; }); child.stderr.on("data", b => { logs += b; });
@@ -37,7 +37,19 @@ try {
   await start();
   assert.equal((await fetch(base)).status, 200);
   const s = await call("session"); cookie = s.cookie; assert.equal(s.body.mode, "rehearsal");
-  const p = (await call("rehearsal", { issueKey: "WP-42" })).body.plan;
+  const read = await call("agent-context?issueKey=WP-42");
+  assert.equal(read.status, 200, JSON.stringify(read.body));
+  const evidenceRef = read.body.evidence.find(e => e.sourceType === "comment").evidenceId;
+  const proposal = await call("propose", {
+    issueKey: "WP-42", snapshotHash: read.body.snapshotHash,
+    reasoning: [{ kind: "fact", statementId: "f1", text: read.body.context.comments[0].body, evidenceRefs: [evidenceRef] }],
+    proposedActions: [{ actionId: "handoff", type: "add_comment",
+      after: { body: "HTTP QA: preparar revision del handoff." }, evidenceRefs: [evidenceRef] }],
+    slackText: "HTTP QA: handoff actualizado y verificado.",
+  });
+  assert.equal(proposal.status, 201, JSON.stringify(proposal.body));
+  const p = proposal.body.plan;
+  assert.equal((await call("plans?issueKey=WP-42")).body.result, undefined);
   assert.ok(p?.planId);
   const command = { planId: p.planId, version: p.version };
   assert.equal((await call("approve", command, "")).status, 401);
@@ -52,6 +64,10 @@ try {
   const restored = await call("plans?issueKey=WP-42");
   assert.equal(restored.body.result.slackProviderId, provider);
   assert.equal(restored.body.plan.status, "executed");
+  const followup = (await call("agent-context?issueKey=WP-42")).body;
+  assert.notEqual(followup.snapshotHash, read.body.snapshotHash);
+  assert.equal(followup.execution.actions[0].status, "succeeded");
+  assert.ok(followup.context.comments.some(c => c.body === "HTTP QA: preparar revision del handoff."));
   const p2 = (await call("rehearsal", { issueKey: "WP-57" })).body.plan;
   assert.equal(p2.actions.length, 1);
   assert.equal((await call("reject", { planId: p2.planId, version: p2.version })).status, 200);

@@ -53,6 +53,16 @@ export const tickets: Ticket[] = [
     ],
     dependencies: [],
   },
+  {
+    key: "WH-1",
+    summary: "WorkPilot Hackathon Padre",
+    status: "En curso",
+    priority: "Medium",
+    assignee: "Sin asignar",
+    description: "Historia padre del proyecto WH para prueba de handoff con WorkPilot.",
+    comments: [],
+    dependencies: [],
+  },
 ];
 
 export const workpilotPlans = {
@@ -91,6 +101,25 @@ export const workpilotPlans = {
     actions: [
       "Agregar resumen de handoff.",
       "Notificar a QA por Slack después de verificar Jira.",
+    ],
+  },
+
+  "WH-1": {
+    findings: [
+      "WH-2 (Hijo 1) está en curso.",
+      "WH-3 (Hijo 2) está por hacer.",
+      "No hay responsable asignado en Jira.",
+    ],
+    missingInfo: [
+      "Falta definir el responsable del handoff.",
+    ],
+    evidence: [
+      "Subtarea WH-2: Hijo 1 — En curso.",
+      "Subtarea WH-3: Hijo 2 — Por hacer.",
+    ],
+    actions: [
+      "Agregar comentario de handoff con estado de subtareas.",
+      "Notificar por Slack después de verificar Jira.",
     ],
   },
 };

@@ -7,7 +7,9 @@
   "exports": {
     ".": "./src/index.ts",
     "./shared": "./src/shared.ts",
-    "./workpilot/action-plan": "./src/workpilot/action-plan.ts"
+    "./workpilot/action-plan": "./src/workpilot/action-plan.ts",
+    "./workpilot": "./src/workpilot/index.ts",
+    "./workpilot/proposal-schema": "./src/workpilot/proposal-schema.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

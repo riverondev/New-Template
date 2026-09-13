@@ -5,6 +5,7 @@ import {
   type Action,
   safeParseActionPlan,
 } from "./action-plan";
+import { proposalSchema } from "./proposal-schema";
 import {
   parseSelectedTicket,
   parseWorkContext,
@@ -188,6 +189,36 @@ test("Jira evidence keeps a malicious comment as traceable data", () => {
     }]);
     assert.equal(result.rejected[0]?.code, "untrusted_instruction");
   });
+});
+
+test("proposal payloads tolerate harmless metadata from the model while keeping the required contract", () => {
+  const parsed = proposalSchema.parse({
+    issueKey: "WH-1",
+    snapshotHash: "abc123",
+    description: "La historia que se está validando.",
+    updatedAt: "2026-09-12T12:34:56.000Z",
+    reasoning: [
+      {
+        kind: "fact",
+        statementId: "fact:status",
+        text: "WH-1 is the current ticket under review.",
+        evidenceRefs: ["issue:WH-1"],
+      },
+    ],
+    proposedActions: [
+      {
+        actionId: "comment:follow-up",
+        evidenceRefs: ["issue:WH-1"],
+        type: "add_comment",
+        after: { body: "Se confirma el siguiente paso y se deja evidencia." },
+      },
+    ],
+    slackText: "Confirmado.",
+  });
+
+  assert.equal(parsed.issueKey, "WH-1");
+  assert.equal(parsed.snapshotHash, "abc123");
+  assert.equal(parsed.proposedActions[0]?.type, "add_comment");
 });
 
 test("facts, hypotheses, and missing information stay separated", () => {

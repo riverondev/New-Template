@@ -6,6 +6,8 @@ import { join } from "node:path";
 import { after } from "node:test";
 const testDirectory = mkdtempSync(join(tmpdir(), "workpilot-unit-"));
 process.env.WORKPILOT_DATA_DIR = testDirectory;
+process.env.WORKPILOT_DEMO = "true";
+process.env.JIRA_PROJECT_KEY = "WP";
 after(() => rmSync(testDirectory, { recursive: true, force: true }));
 // ─── Unit tests: idempotency, plans, executor (dry-run) ──────────────────────
 // Run with: npx jest (or vitest) from apps/web
